@@ -23,6 +23,7 @@ import { mkdtemp, readFile, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { runCodex } from "../src/runtime/run-codex";
+import { extractFencedJson } from "../src/runtime/extract-json";
 
 const SAMPLE_DIFF = `diff --git a/src/range.ts b/src/range.ts
 index abc..def 100644
@@ -140,20 +141,6 @@ Output a JSON object matching the provided schema. Only include findings that ar
   }
 }
 
-/**
- * Find the largest ```json ... ``` (or just ``` ... ```) block in a markdown
- * string. Returns the inner JSON text, or null if no fenced block found.
- */
-function extractFencedJson(text: string): string | null {
-  const fences = [...text.matchAll(/```(?:json)?\s*\n([\s\S]*?)\n```/g)];
-  if (fences.length === 0) return null;
-  // Pick the largest match — usually the one we want.
-  let best = "";
-  for (const m of fences) {
-    if (m[1] && m[1].length > best.length) best = m[1];
-  }
-  return best || null;
-}
 
 main().catch((err) => {
   console.error(err);
