@@ -96,8 +96,15 @@ export async function runCodex(
     "--ignore-user-config",
     "--skip-git-repo-check",
     "--ephemeral",
-    "--sandbox",
-    "read-only",
+    // We pass --dangerously-bypass-approvals-and-sandbox because Codex's
+    // bubblewrap-based sandbox can't initialize on GitHub Actions ubuntu-24.04
+    // runners (AppArmor restricts unprivileged user namespaces). The Codex
+    // docs explicitly endorse this flag for "environments that are externally
+    // sandboxed" — which a GitHub Actions runner is (fresh ephemeral VM per
+    // job, no persistence). The model still has no write tools to GitHub
+    // (post step is non-LLM octokit) so the practical blast radius is the
+    // runner's own ephemeral filesystem and the runner's network egress.
+    "--dangerously-bypass-approvals-and-sandbox",
     "--cd",
     workingDir,
     "--output-last-message",

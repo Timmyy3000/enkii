@@ -57,15 +57,9 @@ runs:
       with:
         node-version: "20"
 
-    - name: Install Codex CLI + sandbox dependency
+    - name: Install Codex CLI
       shell: bash
       run: |
-        # Codex's --sandbox read-only mode uses bubblewrap on Linux. It's not
-        # pre-installed on ubuntu-latest GitHub-hosted runners; the vendored
-        # fallback in Codex 0.125 fails due to runner permission constraints.
-        sudo apt-get update
-        sudo apt-get install -y bubblewrap
-        bwrap --version
         npm install -g @openai/codex@0.125.0
         codex --version
 
