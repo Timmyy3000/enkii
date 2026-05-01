@@ -15,8 +15,9 @@
  * disk if both fire on the same PR.
  */
 
-import { writeFile, mkdir } from "fs/promises";
+import { writeFile, readFile, mkdir } from "fs/promises";
 import { join } from "path";
+import type { ZodTypeAny, infer as zInfer } from "zod";
 import { runCodex } from "../../runtime/run-codex";
 import { extractAndParseJson } from "../../runtime/extract-json";
 import {
@@ -106,18 +107,16 @@ export async function runReview(
     `enkii: ${kind} Pass 1 finished in ${(pass1.durationMs / 1000).toFixed(1)}s`,
   );
 
-  const candidatesRaw = extractAndParseJson(pass1.finalMessage);
-  const candidates = CandidatesPassSchema.safeParse(candidatesRaw);
-  if (!candidates.success) {
-    throw new Error(
-      `enkii: ${kind} Pass 1 output failed schema validation. ` +
-        `Cause: ${candidates.error.message}. ` +
-        `Fix: this is usually a transient model output issue — retry with @enkii /${kind === "security" ? "security" : "review"}.`,
-    );
-  }
-  await writeFile(candidatesPath, JSON.stringify(candidates.data, null, 2));
+  const candidates = await loadPassOutput(
+    `${kind} Pass 1`,
+    candidatesPath,
+    pass1.finalMessage,
+    CandidatesPassSchema,
+    kind,
+  );
+  await writeFile(candidatesPath, JSON.stringify(candidates, null, 2));
   console.log(
-    `enkii: ${kind} Pass 1 produced ${candidates.data.comments.length} candidates → ${candidatesPath}`,
+    `enkii: ${kind} Pass 1 produced ${candidates.comments.length} candidates → ${candidatesPath}`,
   );
 
   // Pass 2 — validator. The validator prompt template reads paths from these
@@ -139,21 +138,19 @@ export async function runReview(
     `enkii: ${kind} Pass 2 finished in ${(pass2.durationMs / 1000).toFixed(1)}s`,
   );
 
-  const validatedRaw = extractAndParseJson(pass2.finalMessage);
-  const validated = ValidatedPassSchema.safeParse(validatedRaw);
-  if (!validated.success) {
-    throw new Error(
-      `enkii: ${kind} Pass 2 output failed schema validation. ` +
-        `Cause: ${validated.error.message}. ` +
-        `Fix: retry with @enkii /${kind === "security" ? "security" : "review"}. The Pass 1 candidates are at ${candidatesPath} for inspection.`,
-    );
-  }
-  await writeFile(validatedPath, JSON.stringify(validated.data, null, 2));
+  const validated = await loadPassOutput(
+    `${kind} Pass 2`,
+    validatedPath,
+    pass2.finalMessage,
+    ValidatedPassSchema,
+    kind,
+  );
+  await writeFile(validatedPath, JSON.stringify(validated, null, 2));
 
-  const approvedCount = validated.data.results.filter(
+  const approvedCount = validated.results.filter(
     (r) => r.status === "approved",
   ).length;
-  const rejectedCount = validated.data.results.length - approvedCount;
+  const rejectedCount = validated.results.length - approvedCount;
   console.log(
     `enkii: ${kind} Pass 2 → ${approvedCount} approved, ${rejectedCount} rejected → ${validatedPath}`,
   );
@@ -162,9 +159,45 @@ export async function runReview(
     kind,
     candidatesPath,
     validatedPath,
-    candidates: candidates.data,
-    validated: validated.data,
+    candidates,
+    validated,
   };
+}
+
+async function loadPassOutput<S extends ZodTypeAny>(
+  passName: string,
+  filePath: string,
+  finalMessage: string,
+  schema: S,
+  kind: ReviewKind,
+): Promise<zInfer<S>> {
+  const command = kind === "security" ? "security" : "review";
+
+  const sources: { label: string; text: string }[] = [];
+  try {
+    sources.push({ label: `file ${filePath}`, text: await readFile(filePath, "utf8") });
+  } catch {
+    // Model didn't write the file; fall through to final message.
+  }
+  sources.push({ label: "Codex final message", text: finalMessage });
+
+  const errors: string[] = [];
+  for (const { label, text } of sources) {
+    try {
+      const parsed = extractAndParseJson(text);
+      const result = schema.safeParse(parsed);
+      if (result.success) return result.data;
+      errors.push(`${label}: ${result.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
+    } catch (err) {
+      errors.push(`${label}: ${(err as Error).message}`);
+    }
+  }
+
+  throw new Error(
+    `enkii: ${passName} output failed schema validation. ` +
+      `Cause: ${errors.join(" | ")}. ` +
+      `Fix: retry with @enkii /${command}. If repeated, the model may not be honoring the output schema.`,
+  );
 }
 
 export async function runCodeReview(args: {
