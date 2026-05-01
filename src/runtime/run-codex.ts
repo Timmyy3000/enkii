@@ -34,10 +34,7 @@ export const OPENROUTER_PROVIDER: ProviderConfig = {
   name: "OpenRouter",
   baseUrl: "https://openrouter.ai/api/v1",
   envKey: "OPENROUTER_API_KEY",
-  // Codex 0.125+ dropped wire_api="chat"; "responses" is the only accepted value.
-  // OpenRouter implements the OpenAI Responses API, so this works for any model
-  // OpenRouter routes (DeepSeek, Qwen, GLM, Kimi, etc.).
-  wireApi: "responses",
+  wireApi: "responses", // Codex 0.125+ requires "responses"; "chat" was dropped.
 };
 
 export type CodexRunOptions = {
@@ -96,14 +93,7 @@ export async function runCodex(
     "--ignore-user-config",
     "--skip-git-repo-check",
     "--ephemeral",
-    // We pass --dangerously-bypass-approvals-and-sandbox because Codex's
-    // bubblewrap-based sandbox can't initialize on GitHub Actions ubuntu-24.04
-    // runners (AppArmor restricts unprivileged user namespaces). The Codex
-    // docs explicitly endorse this flag for "environments that are externally
-    // sandboxed" — which a GitHub Actions runner is (fresh ephemeral VM per
-    // job, no persistence). The model still has no write tools to GitHub
-    // (post step is non-LLM octokit) so the practical blast radius is the
-    // runner's own ephemeral filesystem and the runner's network egress.
+    // GitHub Actions runners restrict unprivileged user namespaces, so Codex's bubblewrap sandbox can't init. The runner itself is the sandbox.
     "--dangerously-bypass-approvals-and-sandbox",
     "--cd",
     workingDir,
