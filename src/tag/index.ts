@@ -1,19 +1,15 @@
 /**
- * Trigger detection + command dispatch for enkii.
- *
- * Adapted from droid-action's src/tag/index.ts (autoplan Eng E6: structurally
- * Factory-coupled, so this is a rewrite with borrowed shape, not a port).
+ * Trigger detection + command dispatch.
  *
  * v0.1 trigger surface:
  *   - pull_request (opened/synchronize/reopened) → run code review automatically
- *     (skipped for draft PRs at the action.yml step level, or here if drafts enabled)
  *   - @enkii /review                              → re-run code review
  *   - @enkii /security                            → standalone security review
  *   - @enkii help | @enkii status | @enkii        → mechanical reply (no LLM)
  *
- * Phase 1 (this file) only wires trigger detection + tracking-comment lifecycle.
- * Phase 3 wires the actual review execution. Until then, command handlers are
- * lightweight stubs that emit Action outputs the workflow can branch on.
+ * This module decides WHAT to run; runtime/ decides HOW. Command handlers
+ * here emit Action outputs (`enkii_command`, `enkii_comment_id`) that the
+ * workflow branches on.
  */
 
 import * as core from "@actions/core";

@@ -1,7 +1,7 @@
 /**
- * Command parser for detecting @enkii commands in GitHub comments and PR bodies.
+ * Command parser for @enkii mentions in GitHub comments and PR bodies.
  *
- * Adapted from Factory-AI/droid-action (MIT). Reduced to enkii's v0.5 command set:
+ * Recognized commands:
  *   - @enkii /review        re-run code review
  *   - @enkii /security      run security review
  *   - @enkii (alone)        respond with help

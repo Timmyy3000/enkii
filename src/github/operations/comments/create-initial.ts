@@ -18,9 +18,8 @@ import {
 } from "../../context";
 import type { Octokit } from "@octokit/rest";
 
-// enkii has no GitHub App in v0.1, so we identify our prior tracking comments
-// by the bot user's login name containing "enkii" or by exact body match.
-// (Factory's droid-action checked a hardcoded App bot ID; we don't have one yet.)
+// We identify prior enkii tracking comments by the bot user's login name
+// containing "enkii" or by exact body match. v1 may add a dedicated App bot ID.
 export async function createInitialComment(
   octokit: Octokit,
   context: ParsedGitHubContext,

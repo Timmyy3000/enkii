@@ -1,19 +1,14 @@
 /**
- * GitHub token resolution for enkii.
+ * GitHub token resolution. Two modes:
  *
- * Rewritten from droid-action's src/github/token.ts (which did Factory-specific
- * OIDC exchange against Factory's hosted endpoints — see autoplan Phase 3 finding
- * E1). enkii v0.1 supports two modes:
+ *   1. Default: GITHUB_TOKEN provided via the `github_token` action input
+ *      (typically `${{ github.token }}`). What 99% of consumers will use.
+ *   2. Optional GitHub App: APP_ID + APP_PRIVATE_KEY env vars mint an
+ *      installation token. Useful for higher rate limits or a custom bot
+ *      identity.
  *
- *   1. Default: GITHUB_TOKEN provided via the `github_token` action input or the
- *      built-in `${{ github.token }}` workflow context. This is what 99% of
- *      consumers will use.
- *   2. Optional GitHub App: APP_ID + APP_PRIVATE_KEY env vars. Mints an
- *      installation token via @octokit/auth-app. Useful if you need a higher
- *      rate limit ceiling or a custom bot identity.
- *
- * Fork-safe degraded mode (token-less for fork PRs) is a v1 feature — v0.1
- * fails fast if no token is available.
+ * Fails fast if no token is available. Fork-safe degraded mode (token-less
+ * runs for fork PRs) is a v1 feature.
  */
 
 import * as core from "@actions/core";

@@ -3,11 +3,6 @@
 /**
  * Prepare the enkii action: validate env, resolve GitHub token, parse context,
  * check trigger + permissions, dispatch to the tag-execution pipeline.
- *
- * Adapted from droid-action's src/entrypoints/prepare.ts (MIT). Differences:
- *   - validates OPENROUTER_API_KEY (not FACTORY_API_KEY)
- *   - calls our enkii prepareTagExecution (not droid's modular `prepare/` module)
- *   - skips MCP config setup — Codex CLI has built-in tools, no MCP needed
  */
 
 import * as core from "@actions/core";

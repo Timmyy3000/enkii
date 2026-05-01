@@ -1,9 +1,5 @@
 /**
  * Shared types for prompt scaffolding.
- *
- * Adapted from Factory-AI/droid-action's src/create-prompt/types.ts (MIT).
- * Renamed `droidBranch` → `enkiiBranch` and `droidCommentId` → `enkiiCommentId`
- * for consistency with the rest of the codebase.
  */
 
 import type { GitHubContext } from "../github/context";
