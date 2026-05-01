@@ -8,6 +8,10 @@ inputs:
   openrouter_api_key:
     description: "OpenRouter API key (required). Generate at https://openrouter.ai/keys."
     required: true
+  github_token:
+    description: "GitHub token. Defaults to ${{ github.token }} if unset. Set this if you need a custom GitHub App token."
+    required: false
+    default: ${{ github.token }}
   review_model:
     description: "OpenRouter model ID for code review."
     required: false
@@ -25,12 +29,53 @@ inputs:
     required: false
     default: ""
 
+outputs:
+  contains_trigger:
+    description: "Whether the event matched an enkii trigger (true/false)"
+    value: ${{ steps.prepare.outputs.contains_trigger }}
+  enkii_command:
+    description: "The dispatched command (review/security/help/status/skip)"
+    value: ${{ steps.prepare.outputs.enkii_command }}
+  enkii_comment_id:
+    description: "ID of the tracking comment, when one was created"
+    value: ${{ steps.prepare.outputs.enkii_comment_id }}
+
 runs:
   using: "composite"
   steps:
-    - name: enkii (placeholder)
+    - name: Mask OpenRouter API key
+      shell: bash
+      run: echo "::add-mask::${{ inputs.openrouter_api_key }}"
+
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: 1.2.11
+
+    - name: Install enkii dependencies
       shell: bash
       run: |
-        echo "enkii is in alpha. The action runs nothing yet — see CHANGELOG.md for status."
-        echo "Phase 1 (borrow plumbing) lands the actual review pipeline."
+        cd "${GITHUB_ACTION_PATH}"
+        bun install --frozen-lockfile
+
+    - name: Prepare enkii (validate, trigger detection, dispatch)
+      id: prepare
+      shell: bash
+      run: |
+        bun run "${GITHUB_ACTION_PATH}/src/entrypoints/prepare.ts"
+      env:
+        OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+        REVIEW_MODEL: ${{ inputs.review_model }}
+        SECURITY_MODEL: ${{ inputs.security_model }}
+        REVIEW_SKILL_PATH: ${{ inputs.review_skill_path }}
+        SECURITY_SKILL_PATH: ${{ inputs.security_skill_path }}
+        DEFAULT_WORKFLOW_TOKEN: ${{ github.token }}
+
+    - name: Run enkii review (placeholder)
+      if: steps.prepare.outputs.contains_trigger == 'true'
+      shell: bash
+      run: |
+        echo "enkii dispatched: ${{ steps.prepare.outputs.enkii_command }}"
+        echo "Phase 2 (Codex CLI runtime) wires the actual review here."
         exit 0
