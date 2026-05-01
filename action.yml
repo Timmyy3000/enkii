@@ -52,6 +52,34 @@ runs:
       with:
         bun-version: 1.2.11
 
+    - name: Setup Node (for Codex CLI install)
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+
+    - name: Install Codex CLI
+      shell: bash
+      run: |
+        npm install -g @openai/codex@0.125.0
+        codex --version
+
+    - name: Configure Codex for OpenRouter
+      shell: bash
+      run: |
+        mkdir -p "$HOME/.codex"
+        cat > "$HOME/.codex/config.toml" <<'EOF'
+        # enkii-managed config. Routes Codex through OpenRouter so any model on
+        # OpenRouter is reachable via the same OpenAI-compatible wire protocol.
+        model_provider = "openrouter"
+
+        [model_providers.openrouter]
+        name = "OpenRouter"
+        base_url = "https://openrouter.ai/api/v1"
+        env_key = "OPENROUTER_API_KEY"
+        wire_api = "chat"
+        EOF
+        echo "Wrote $HOME/.codex/config.toml"
+
     - name: Install enkii dependencies
       shell: bash
       run: |
@@ -72,10 +100,11 @@ runs:
         SECURITY_SKILL_PATH: ${{ inputs.security_skill_path }}
         DEFAULT_WORKFLOW_TOKEN: ${{ github.token }}
 
-    - name: Run enkii review (placeholder)
+    - name: Run enkii review (placeholder — Phase 3 wires this)
       if: steps.prepare.outputs.contains_trigger == 'true'
       shell: bash
       run: |
         echo "enkii dispatched: ${{ steps.prepare.outputs.enkii_command }}"
-        echo "Phase 2 (Codex CLI runtime) wires the actual review here."
+        echo "Codex CLI is installed and configured for OpenRouter."
+        echo "Phase 3 wires Pass 1 + Pass 2 + post step on top of src/runtime/run-codex.ts."
         exit 0
