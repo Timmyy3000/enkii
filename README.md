@@ -51,6 +51,31 @@ Triggers:
 - Comment `@enkii /security` — separate security review
 - Comment `@enkii` alone — replies with help
 
+## Recommended: pin a provider for caching benefits
+
+OpenRouter routes calls across multiple providers (DeepSeek, NovitaAI, Together, Fireworks, etc.) by default. That's fine for a first run, but **prompt caching only works when consecutive calls hit the same provider**. Since the bulk of every Codex call is the same ~10K-token system prompt, pinning a single provider (with fallbacks) cuts your input cost by 90%+.
+
+The cleanest way: **OpenRouter Presets**. Create one preset on your OpenRouter dashboard, reference it as the `review_model` input.
+
+1. Go to [openrouter.ai/settings/presets](https://openrouter.ai/settings/presets)
+2. Create a preset (e.g. `enkii`) with:
+   - Model: `deepseek/deepseek-v4-pro`
+   - Provider order: `DeepSeek` first, then a US-hosted fallback like `NovitaAI` or `SiliconFlow`
+   - Allow fallbacks: yes
+   - Ignored providers: `Parasail`, `GMICloud` (Parasail's cache is 50% off vs others' 92%; GMICloud has poor uptime)
+3. Use the preset in your workflow:
+   ```yaml
+   - uses: Timmyy3000/enkii@v0.1
+     with:
+       openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+       review_model: "@preset/enkii"
+       security_model: "@preset/enkii"
+   ```
+
+DeepSeek's own API offers ~99% discount on cached input ($0.003625/M vs $0.435/M base) and 4× cheaper base pricing than the next-cheapest US-hosted provider. With the preset and warm cache, per-PR cost drops to roughly $0.01–$0.02 even on full-size PRs.
+
+If you skip this, enkii still works — it just costs ~4× more. Acceptable for a side project; worth doing for serious adoption.
+
 ## Why this exists
 
 Greptile, CodeRabbit, Devin Review, and Factory Droid Review are good products. They're also commercial, vendor-locked, and varying degrees of opaque about what they actually run.
