@@ -2,7 +2,7 @@
 
 > Open-source GitHub Action for AI-powered pull request reviews. Bring your own OpenRouter key. No vendor lock-in.
 
-**Status:** alpha (v0.5 / beta in active development). Not ready for production yet. Star the repo if you want to follow along.
+**Status:** alpha (v0.1 / beta in active development). Not ready for production yet. Star the repo if you want to follow along.
 
 Named after the Mesopotamian god of knowledge, caution, and foresight. Enki was the wise advisor who warned the other gods before they did dumb things, which is roughly the job description for a code review bot.
 
@@ -39,7 +39,7 @@ jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - uses: Timmyy3000/enkii@v0.5
+      - uses: Timmyy3000/enkii@v0.1
         with:
           openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
 ```
@@ -76,4 +76,4 @@ MIT. See [LICENSE](LICENSE).
 
 ## Contributing
 
-Project is in early development, contribution guide coming once the v0.5 beta lands. Issues + ideas welcome.
+Project is in early development, contribution guide coming once the v0.1 beta lands. Issues + ideas welcome.
