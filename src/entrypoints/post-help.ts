@@ -14,9 +14,20 @@ import { setupGitHubToken } from "../github/token";
 import { createOctokit } from "../github/api/client";
 import { parseGitHubContext, isEntityContext } from "../github/context";
 
-const HELP_BODY = `## enkii — open-source AI code review
+const ENKII_ICON_URL =
+  "https://raw.githubusercontent.com/Timmyy3000/enkii/main/assets/enkii-icon.svg";
+const ENKII_REPO_URL = "https://github.com/Timmyy3000/enkii";
 
-I'm a code review bot. You can invoke me on a PR with:
+function brandedHeader(label: string): string {
+  return (
+    `<a href="${ENKII_REPO_URL}"><img src="${ENKII_ICON_URL}" height="20" align="left" alt="enkii"></a>` +
+    `&nbsp;**enkii** &nbsp;·&nbsp; _${label}_`
+  );
+}
+
+const HELP_BODY = `${brandedHeader("help")}
+
+I'm an open-source AI code review bot. You can invoke me on a PR with:
 
 - \`@enkii /review\` — re-run the code review on the latest commit
 - \`@enkii /security\` — run a focused security review (separate thread)
@@ -25,13 +36,13 @@ I'm a code review bot. You can invoke me on a PR with:
 
 Code review also runs automatically when a PR is opened, synchronized, or reopened.
 
-[Repo + docs](https://github.com/Timmyy3000/enkii)`;
+<sub>Posted by <a href="${ENKII_REPO_URL}">enkii</a> — open-source AI code review. Bring your own OpenRouter key.</sub>`;
 
-const STATUS_BODY = `## enkii status
+const STATUS_BODY = `${brandedHeader("status")}
 
 Live status reporting is coming in a follow-up release. For now, check the **Actions** tab on this repo for the most recent enkii workflow run on this PR.
 
-[Repo + docs](https://github.com/Timmyy3000/enkii)`;
+<sub>Posted by <a href="${ENKII_REPO_URL}">enkii</a> — open-source AI code review.</sub>`;
 
 async function run(): Promise<void> {
   try {

@@ -92,12 +92,16 @@ export async function postReviewFromValidated(args: {
 
   const headSha = validated.meta.headSha;
 
+  const kind: "code" | "security" =
+    marker === ENKII_SECURITY_MARKER ? "security" : "code";
+
   const summaryBody = buildSummaryBody({
     marker,
     summary: validated.reviewSummary?.body,
     totalApproved: approved.length,
     inlinePosted: inline.length,
     spillover,
+    kind,
   });
 
   const inlineComments = inline.map(toGitHubReviewComment);
@@ -148,22 +152,35 @@ function toGitHubReviewComment(c: Candidate) {
   return base;
 }
 
+const ENKII_ICON_URL =
+  "https://raw.githubusercontent.com/Timmyy3000/enkii/main/assets/enkii-icon.svg";
+const ENKII_REPO_URL = "https://github.com/Timmyy3000/enkii";
+
+function brandedHeader(kind: "code" | "security"): string {
+  const label = kind === "security" ? "security review" : "code review";
+  return (
+    `<a href="${ENKII_REPO_URL}"><img src="${ENKII_ICON_URL}" height="20" align="left" alt="enkii"></a>` +
+    `&nbsp;**enkii** &nbsp;·&nbsp; _${label}_`
+  );
+}
+
 function buildSummaryBody(args: {
   marker: string;
   summary?: string;
   totalApproved: number;
   inlinePosted: number;
   spillover: Candidate[];
+  kind?: "code" | "security";
 }): string {
-  const { marker, summary, totalApproved, spillover } = args;
-  const parts: string[] = [marker];
+  const { marker, summary, totalApproved, spillover, kind = "code" } = args;
+  const parts: string[] = [marker, brandedHeader(kind)];
 
   if (summary) {
     parts.push(summary.trim());
   } else if (totalApproved === 0) {
-    parts.push("enkii reviewed this PR and found no issues to flag.");
+    parts.push("Reviewed this PR and found no issues to flag.");
   } else {
-    parts.push(`enkii reviewed this PR and posted ${totalApproved} comments.`);
+    parts.push(`Reviewed this PR and posted ${totalApproved} comments.`);
   }
 
   if (spillover.length > 0) {
@@ -178,7 +195,7 @@ function buildSummaryBody(args: {
 
   parts.push("");
   parts.push(
-    "_Posted by [enkii](https://github.com/Timmyy3000/enkii) — open-source AI code review._",
+    `<sub>Posted by <a href="${ENKII_REPO_URL}">enkii</a> — open-source AI code review. Bring your own OpenRouter key.</sub>`,
   );
 
   return parts.join("\n\n");
