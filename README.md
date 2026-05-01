@@ -51,28 +51,33 @@ Triggers:
 - Comment `@enkii /security` — separate security review
 - Comment `@enkii` alone — replies with help
 
-## Recommended: pin a provider for caching benefits
+## Setup
 
-OpenRouter routes each call across multiple providers by default. **Prompt caching only kicks in when consecutive calls hit the same provider.** Since most of every Codex call is a fixed system prompt, pinning a single provider with fallbacks usually cuts input cost substantially.
+By default, `review_model` and `security_model` are `@preset/enkii`. This means enkii expects an OpenRouter preset named `enkii` on the account behind your `OPENROUTER_API_KEY`. Reasons to use a preset over a raw model name: a single OpenRouter setting controls model + provider order + fallbacks, prompt caching warms up consistently across calls, and you can swap the underlying model without touching your workflow file.
 
-The cleanest way: **OpenRouter Presets**. Create one on your OpenRouter dashboard, then reference it as the `review_model` input.
+**Recommended path: create the preset.**
 
 1. Open your OpenRouter dashboard's Presets settings
-2. Create a preset (any name) with:
+2. Create a preset named `enkii` with:
    - **Model:** `<your-model>` (any OpenRouter model id)
-   - **Provider order:** `<your-primary-provider>`, `<your-fallback-provider>` — pick providers based on your own price/uptime/sovereignty preferences
+   - **Provider order:** `<your-primary-provider>`, `<your-fallback-provider>` — pick based on your own price / uptime / sovereignty preferences
    - **Allow fallbacks:** yes
    - **Ignored providers:** any you want to avoid (e.g. ones with weak cache discounts or unreliable uptime)
-3. Use the preset in your workflow:
-   ```yaml
-   - uses: Timmyy3000/enkii@v0.1
-     with:
-       openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
-       review_model: "@preset/<your-preset-name>"
-       security_model: "@preset/<your-preset-name>"
-   ```
+3. Done. The default workflow snippet above will route through your preset.
 
-Pricing varies by provider; check the OpenRouter dashboard for current input/output and cache-read rates per provider. Skipping the preset is fine — enkii works without it, you just don't capture the cache savings.
+**Override path: skip the preset, name a model directly.**
+
+If you don't want to set up a preset, override `review_model` and `security_model` with any OpenRouter model id:
+
+```yaml
+- uses: Timmyy3000/enkii@v0.1
+  with:
+    openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+    review_model: "<your-model-id>"
+    security_model: "<your-model-id>"
+```
+
+You'll lose the consistent provider routing (and most of the prompt caching) but it works.
 
 ## Why this exists
 

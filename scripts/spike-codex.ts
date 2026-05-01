@@ -83,8 +83,9 @@ async function main() {
 
 Output a JSON object matching the provided schema. Only include findings that are real issues you would want a teammate to address. Do not include style nits unless they cause real bugs. Severity scale: P0 = data loss / crash / security; P1 = correctness bug / wrong behavior; P2 = robustness / maintainability; nit = style only.`;
 
+  const modelInUse = process.env.ENKII_SPIKE_MODEL || "@preset/enkii";
   console.log("Spike config:");
-  console.log("  model:        deepseek/deepseek-v4-pro");
+  console.log(`  model:        ${modelInUse}`);
   console.log("  sandbox:      read-only");
   console.log("  workDir:      " + workDir);
   console.log("  diff:         " + (diffArg ?? "<inline sample>"));
@@ -95,8 +96,10 @@ Output a JSON object matching the provided schema. Only include findings that ar
   console.log("");
 
   const result = await runCodex({
+    // Defaults to the preset; override with `ENKII_SPIKE_MODEL=<model>` if you
+    // don't want to set up a preset called `enkii` on your OpenRouter account.
     prompt,
-    model: "deepseek/deepseek-v4-pro",
+    model: process.env.ENKII_SPIKE_MODEL || "@preset/enkii",
     workingDir: workDir,
     outputFile: outputPath,
     outputSchemaPath: schemaPath,

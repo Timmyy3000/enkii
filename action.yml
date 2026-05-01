@@ -13,13 +13,13 @@ inputs:
     required: false
     default: ${{ github.token }}
   review_model:
-    description: "OpenRouter model ID for code review."
+    description: "Model used for code review. Defaults to '@preset/enkii' which expects an OpenRouter preset named 'enkii' on the consumer's account (recommended for caching). Override with any OpenRouter model id (e.g. 'deepseek/deepseek-v4-pro') if you don't want to use a preset."
     required: false
-    default: "deepseek/deepseek-v4-pro"
+    default: "@preset/enkii"
   security_model:
-    description: "OpenRouter model ID for security review."
+    description: "Model used for security review. Same convention as review_model."
     required: false
-    default: "deepseek/deepseek-v4-pro"
+    default: "@preset/enkii"
   review_skill_path:
     description: "Path to a custom review skill markdown file (relative to repo root). Empty = use bundled default."
     required: false
