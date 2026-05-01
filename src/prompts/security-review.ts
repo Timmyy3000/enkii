@@ -27,11 +27,13 @@ export function generateSecurityCandidatesPrompt(
     process.env.REVIEW_CANDIDATES_PATH ??
     "$RUNNER_TEMP/enkii-prompts/review_candidates.json";
 
-  return `You are a senior security engineer performing a security-focused code review.
+  const skillContent = context.skillContent ?? "";
+
+  return `${skillContent ? skillContent + "\n\n---\n\n" : ""}You are a senior security engineer performing a security-focused code review.
 
 Your task: Review PR #${prNumber} in ${repoFullName} and generate a JSON file with **high-confidence security vulnerability** findings.
 
-Invoke the 'security-review' skill to load the security review methodology, then execute its **Pass 1: Candidate Generation** procedure.
+Apply the methodology above to execute **Pass 1: Candidate Generation**.
 
 <context>
 Repo: ${repoFullName}

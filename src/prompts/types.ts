@@ -126,4 +126,6 @@ export type PreparedContext = CommonFields & {
   /** Path to a custom skill file (review.md or security-review.md) — empty = bundled default */
   reviewSkillPath?: string;
   securitySkillPath?: string;
+  /** Skill markdown content already loaded by the orchestrator and ready for inlining into the prompt. */
+  skillContent?: string;
 };

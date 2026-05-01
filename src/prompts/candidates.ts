@@ -39,36 +39,17 @@ export function generateReviewCandidatesPrompt(
       "    If you include a suggestion block, choose a RIGHT-side anchor and keep it unchanged so the validator can reuse it."
     : '  - `side`: "RIGHT" for new/modified code (default), "LEFT" only for removed code';
 
-  const skillInstruction = includeSuggestions
-    ? "Invoke the 'review' skill to load the review methodology, then execute its **Pass 1: Candidate Generation** procedure — including suggestion block rules."
-    : "Invoke the 'review' skill to load the review methodology, then execute its **Pass 1: Candidate Generation** procedure. Do NOT include code suggestion blocks.";
+  const passInstruction = includeSuggestions
+    ? "Apply the methodology above to execute **Pass 1: Candidate Generation** — including suggestion block rules where high-confidence."
+    : "Apply the methodology above to execute **Pass 1: Candidate Generation**. Do NOT include code suggestion blocks.";
 
-  const securityReviewEnabled = process.env.SECURITY_REVIEW_ENABLED === "true";
+  const skillContent = context.skillContent ?? "";
 
-  const securitySubagentInstruction = securityReviewEnabled
-    ? `
-
-## Security Review (run concurrently)
-
-In addition to the code review, you MUST also spawn a \`security-reviewer\` subagent via the Task tool.
-This subagent runs **concurrently** with the code review subagents during Step 2.
-
-Spawn it with:
-- \`subagent_type\`: "security-reviewer"
-- \`description\`: "Security review"
-- \`prompt\`: Include the full PR context (repo, PR number, head SHA, base ref) and the paths to precomputed data files (diff, description, existing comments). The security-reviewer will invoke the security-review skill and return a JSON array of security findings.
-
-**IMPORTANT**: Spawn the security-reviewer in the SAME response as the code review subagents so they all run in parallel.
-
-After all subagents complete (both code review and security-reviewer), merge the security findings into the \`comments\` array alongside code review findings. Security findings use the same schema but are prefixed with \`[security]\` in their body (e.g., \`[P1] [security] Title\`).
-`
-    : "";
-
-  return `You are a senior staff software engineer and expert code reviewer.
+  return `${skillContent ? skillContent + "\n\n---\n\n" : ""}You are a senior staff software engineer and expert code reviewer.
 
 Your task: Review PR #${prNumber} in ${repoFullName} and generate a JSON file with **high-confidence, actionable** review comments that pinpoint genuine issues.
 
-${skillInstruction}${securitySubagentInstruction}
+${passInstruction}
 
 <context>
 Repo: ${repoFullName}

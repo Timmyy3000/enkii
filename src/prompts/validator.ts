@@ -32,15 +32,17 @@ export function generateReviewValidatorPrompt(
 
   const includeSuggestions = context.includeSuggestions !== false;
 
-  const skillInstruction = includeSuggestions
-    ? "Invoke the 'review' skill to load the review methodology, then execute its **Pass 2: Validation** procedure — including suggestion block rules."
-    : "Invoke the 'review' skill to load the review methodology, then execute its **Pass 2: Validation** procedure. Do NOT include code suggestion blocks.";
+  const passInstruction = includeSuggestions
+    ? "Apply the methodology above to execute **Pass 2: Validation** — including suggestion block rules."
+    : "Apply the methodology above to execute **Pass 2: Validation**. Do NOT include code suggestion blocks.";
 
-  return `You are validating candidate review comments for PR #${prNumber} in ${repoFullName}.
+  const skillContent = context.skillContent ?? "";
 
-IMPORTANT: This is Phase 2 (validator) of a two-pass review pipeline.
+  return `${skillContent ? skillContent + "\n\n---\n\n" : ""}You are validating candidate review comments for PR #${prNumber} in ${repoFullName}.
 
-${skillInstruction}
+IMPORTANT: This is Pass 2 (validator) of a two-pass review pipeline.
+
+${passInstruction}
 
 ### Context
 
