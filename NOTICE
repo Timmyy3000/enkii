@@ -1,0 +1,14 @@
+enkii
+Copyright (c) 2026 Timmyy3000
+
+This product includes software derived from the open-source project
+Factory-AI/droid-action (https://github.com/Factory-AI/droid-action),
+licensed under the MIT License (Copyright (c) Factory AI).
+
+Files in `src/github/`, `src/tag/`, `src/prompts/`, and `src/entrypoints/`
+are adapted from droid-action with modifications. The original copyright
+notices and the MIT License are preserved.
+
+The `droid` runtime CLI from Factory is NOT included or used in enkii.
+enkii uses OpenCode (https://github.com/sst/opencode) as the agent harness
+and OpenRouter (https://openrouter.ai) for model inference.
