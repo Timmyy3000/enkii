@@ -52,7 +52,7 @@ export type CodexRunOptions = {
   provider?: ProviderConfig;
   /** Path to the Codex CLI executable. Defaults to "codex" on PATH. */
   codexExecutable?: string;
-  /** Hard kill after this many ms. Default 10 min. */
+  /** Hard kill after this many ms. Default 20 min. Override via CODEX_TIMEOUT_MS env var. */
   timeoutMs?: number;
 };
 
@@ -62,6 +62,13 @@ export type CodexRunResult = {
   finalMessage: string;
   durationMs: number;
 };
+
+function parseEnvTimeout(): number | null {
+  const raw = process.env.CODEX_TIMEOUT_MS;
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 export class CodexRunError extends Error {
   exitCode: number;
@@ -85,7 +92,7 @@ export async function runCodex(
     outputSchemaPath,
     provider = OPENROUTER_PROVIDER,
     codexExecutable = "codex",
-    timeoutMs = 10 * 60 * 1000,
+    timeoutMs = parseEnvTimeout() ?? 20 * 60 * 1000,
   } = options;
 
   const args = [
