@@ -129,10 +129,11 @@ runs:
         VALIDATED_PATH: ${{ steps.run_security_review.outputs.validated_path }}
         ENKII_REVIEW_KIND: security
 
-    - name: Reply to @enkii (help / status / skip)
-      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.enkii_command != 'review' && steps.prepare.outputs.enkii_command != 'security'
+    - name: Reply to @enkii (help / status)
+      if: steps.prepare.outputs.contains_trigger == 'true' && (steps.prepare.outputs.enkii_command == 'help' || steps.prepare.outputs.enkii_command == 'status' || steps.prepare.outputs.enkii_command == 'default')
       shell: bash
       run: |
-        echo "enkii dispatched: ${{ steps.prepare.outputs.enkii_command }}"
-        echo "Mechanical replies (help / status) land in a follow-up commit; for now this exits cleanly."
-        exit 0
+        bun run "${GITHUB_ACTION_PATH}/src/entrypoints/post-help.ts"
+      env:
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+        ENKII_COMMAND: ${{ steps.prepare.outputs.enkii_command }}
