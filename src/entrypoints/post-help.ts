@@ -34,15 +34,11 @@ I'm an open-source AI code review bot. You can invoke me on a PR with:
 - \`@enkii help\` — show this message
 - \`@enkii status\` — show the most recent run on this PR
 
-Code review also runs automatically when a PR is opened, synchronized, or reopened.
-
-<sub>Posted by <a href="${ENKII_REPO_URL}">enkii</a> — open-source AI code review. Bring your own OpenRouter key.</sub>`;
+Code review also runs automatically when a PR is opened, synchronized, or reopened.`;
 
 const STATUS_BODY = `${brandedHeader("status")}
 
-Live status reporting is coming in a follow-up release. For now, check the **Actions** tab on this repo for the most recent enkii workflow run on this PR.
-
-<sub>Posted by <a href="${ENKII_REPO_URL}">enkii</a> — open-source AI code review.</sub>`;
+Live status reporting is coming in a follow-up release. For now, check the **Actions** tab on this repo for the most recent enkii workflow run on this PR.`;
 
 async function run(): Promise<void> {
   try {

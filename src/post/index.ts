@@ -193,10 +193,5 @@ function buildSummaryBody(args: {
     }
   }
 
-  parts.push("");
-  parts.push(
-    `<sub>Posted by <a href="${ENKII_REPO_URL}">enkii</a> — open-source AI code review. Bring your own OpenRouter key.</sub>`,
-  );
-
   return parts.join("\n\n");
 }
