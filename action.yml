@@ -1,0 +1,36 @@
+name: "enkii"
+description: "Open-source AI code review for GitHub PRs. Bring your own OpenRouter key. No vendor lock-in."
+branding:
+  icon: "eye"
+  color: "purple"
+
+inputs:
+  openrouter_api_key:
+    description: "OpenRouter API key (required). Generate at https://openrouter.ai/keys."
+    required: true
+  review_model:
+    description: "OpenRouter model ID for code review."
+    required: false
+    default: "deepseek/deepseek-v4-pro"
+  security_model:
+    description: "OpenRouter model ID for security review."
+    required: false
+    default: "deepseek/deepseek-v4-pro"
+  review_skill_path:
+    description: "Path to a custom review skill markdown file (relative to repo root). Empty = use bundled default."
+    required: false
+    default: ""
+  security_skill_path:
+    description: "Path to a custom security review skill markdown file (relative to repo root). Empty = use bundled default."
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: enkii (placeholder)
+      shell: bash
+      run: |
+        echo "enkii is in alpha. The action runs nothing yet — see CHANGELOG.md for status."
+        echo "Phase 1 (borrow plumbing) lands the actual review pipeline."
+        exit 0
