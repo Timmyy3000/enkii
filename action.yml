@@ -63,23 +63,6 @@ runs:
         npm install -g @openai/codex@0.125.0
         codex --version
 
-    - name: Configure Codex for OpenRouter
-      shell: bash
-      run: |
-        mkdir -p "$HOME/.codex"
-        cat > "$HOME/.codex/config.toml" <<'EOF'
-        # enkii-managed config. Routes Codex through OpenRouter so any model on
-        # OpenRouter is reachable via the same OpenAI-compatible wire protocol.
-        model_provider = "openrouter"
-
-        [model_providers.openrouter]
-        name = "OpenRouter"
-        base_url = "https://openrouter.ai/api/v1"
-        env_key = "OPENROUTER_API_KEY"
-        wire_api = "chat"
-        EOF
-        echo "Wrote $HOME/.codex/config.toml"
-
     - name: Install enkii dependencies
       shell: bash
       run: |
@@ -100,11 +83,47 @@ runs:
         SECURITY_SKILL_PATH: ${{ inputs.security_skill_path }}
         DEFAULT_WORKFLOW_TOKEN: ${{ github.token }}
 
-    - name: Run enkii review (placeholder — Phase 3 wires this)
-      if: steps.prepare.outputs.contains_trigger == 'true'
+    - name: Run code review (Pass 1 + Pass 2)
+      id: run_review
+      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.enkii_command == 'review'
+      shell: bash
+      run: |
+        bun run "${GITHUB_ACTION_PATH}/src/entrypoints/run-review.ts"
+      env:
+        OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+        REVIEW_MODEL: ${{ inputs.review_model }}
+        REVIEW_SKILL_PATH: ${{ inputs.review_skill_path }}
+
+    - name: Post code review comments
+      id: post_review
+      if: steps.run_review.outputs.validated_path != ''
+      shell: bash
+      run: |
+        bun run "${GITHUB_ACTION_PATH}/src/entrypoints/post-review.ts"
+      env:
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+        VALIDATED_PATH: ${{ steps.run_review.outputs.validated_path }}
+        ENKII_REVIEW_KIND: code
+
+    - name: Run security review (Pass 1 + Pass 2)
+      id: run_security_review
+      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.enkii_command == 'security'
+      shell: bash
+      run: |
+        echo "enkii: security review path will land in Phase 4."
+        echo "For v0.1 this slot exists so the @enkii /security trigger doesn't silently no-op."
+        exit 0
+      env:
+        OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+        SECURITY_MODEL: ${{ inputs.security_model }}
+        SECURITY_SKILL_PATH: ${{ inputs.security_skill_path }}
+
+    - name: Reply to @enkii (help / status / skip)
+      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.enkii_command != 'review' && steps.prepare.outputs.enkii_command != 'security'
       shell: bash
       run: |
         echo "enkii dispatched: ${{ steps.prepare.outputs.enkii_command }}"
-        echo "Codex CLI is installed and configured for OpenRouter."
-        echo "Phase 3 wires Pass 1 + Pass 2 + post step on top of src/runtime/run-codex.ts."
+        echo "Mechanical replies (help / status) land in a follow-up commit; for now this exits cleanly."
         exit 0
