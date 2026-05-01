@@ -53,28 +53,26 @@ Triggers:
 
 ## Recommended: pin a provider for caching benefits
 
-OpenRouter routes calls across multiple providers (DeepSeek, NovitaAI, Together, Fireworks, etc.) by default. That's fine for a first run, but **prompt caching only works when consecutive calls hit the same provider**. Since the bulk of every Codex call is the same ~10K-token system prompt, pinning a single provider (with fallbacks) cuts your input cost by 90%+.
+OpenRouter routes each call across multiple providers by default. **Prompt caching only kicks in when consecutive calls hit the same provider.** Since most of every Codex call is a fixed system prompt, pinning a single provider with fallbacks usually cuts input cost substantially.
 
-The cleanest way: **OpenRouter Presets**. Create one preset on your OpenRouter dashboard, reference it as the `review_model` input.
+The cleanest way: **OpenRouter Presets**. Create one on your OpenRouter dashboard, then reference it as the `review_model` input.
 
-1. Go to [openrouter.ai/settings/presets](https://openrouter.ai/settings/presets)
-2. Create a preset (e.g. `enkii`) with:
-   - Model: `deepseek/deepseek-v4-pro`
-   - Provider order: `DeepSeek` first, then a US-hosted fallback like `NovitaAI` or `SiliconFlow`
-   - Allow fallbacks: yes
-   - Ignored providers: `Parasail`, `GMICloud` (Parasail's cache is 50% off vs others' 92%; GMICloud has poor uptime)
+1. Open your OpenRouter dashboard's Presets settings
+2. Create a preset (any name) with:
+   - **Model:** `<your-model>` (any OpenRouter model id)
+   - **Provider order:** `<your-primary-provider>`, `<your-fallback-provider>` — pick providers based on your own price/uptime/sovereignty preferences
+   - **Allow fallbacks:** yes
+   - **Ignored providers:** any you want to avoid (e.g. ones with weak cache discounts or unreliable uptime)
 3. Use the preset in your workflow:
    ```yaml
    - uses: Timmyy3000/enkii@v0.1
      with:
        openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
-       review_model: "@preset/enkii"
-       security_model: "@preset/enkii"
+       review_model: "@preset/<your-preset-name>"
+       security_model: "@preset/<your-preset-name>"
    ```
 
-DeepSeek's own API offers ~99% discount on cached input ($0.003625/M vs $0.435/M base) and 4× cheaper base pricing than the next-cheapest US-hosted provider. With the preset and warm cache, per-PR cost drops to roughly $0.01–$0.02 even on full-size PRs.
-
-If you skip this, enkii still works — it just costs ~4× more. Acceptable for a side project; worth doing for serious adoption.
+Pricing varies by provider; check the OpenRouter dashboard for current input/output and cache-read rates per provider. Skipping the preset is fine — enkii works without it, you just don't capture the cache savings.
 
 ## Why this exists
 
