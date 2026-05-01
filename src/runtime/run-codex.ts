@@ -8,15 +8,42 @@
  * Sandbox is forced to `read-only` — Pass 1/2 must never modify the workspace,
  * never run shell commands, never reach the network. The action's post step (octokit)
  * is the only thing that mutates GitHub state.
+ *
+ * Provider config is passed inline via `--ignore-user-config` + `-c` overrides so
+ * runs are reproducible regardless of the user's local `~/.codex/config.toml`.
  */
 
 import { spawn } from "child_process";
 import { readFile } from "fs/promises";
 
+export type ProviderConfig = {
+  /** Provider id used in `-c model_provider="<id>"`. */
+  id: string;
+  /** Display name (cosmetic). */
+  name: string;
+  /** OpenAI-compatible base URL, e.g. "https://openrouter.ai/api/v1". */
+  baseUrl: string;
+  /** Env var Codex reads for the API key, e.g. "OPENROUTER_API_KEY". */
+  envKey: string;
+  /** Wire protocol — "chat" for OpenAI-compatible chat completions. */
+  wireApi: "chat" | "responses";
+};
+
+export const OPENROUTER_PROVIDER: ProviderConfig = {
+  id: "openrouter",
+  name: "OpenRouter",
+  baseUrl: "https://openrouter.ai/api/v1",
+  envKey: "OPENROUTER_API_KEY",
+  // Codex 0.125+ dropped wire_api="chat"; "responses" is the only accepted value.
+  // OpenRouter implements the OpenAI Responses API, so this works for any model
+  // OpenRouter routes (DeepSeek, Qwen, GLM, Kimi, etc.).
+  wireApi: "responses",
+};
+
 export type CodexRunOptions = {
   /** The prompt sent as the initial user instruction. */
   prompt: string;
-  /** Model ID, e.g. "deepseek/deepseek-v4-pro". Routed via the configured model_provider. */
+  /** Model ID, e.g. "deepseek/deepseek-v4-pro". */
   model: string;
   /** Working directory passed to Codex via `--cd`. Usually `$GITHUB_WORKSPACE`. */
   workingDir: string;
@@ -24,12 +51,12 @@ export type CodexRunOptions = {
   outputFile: string;
   /** Optional JSON Schema file to constrain the agent's final output (`--output-schema`). */
   outputSchemaPath?: string;
+  /** Provider config to inject. Defaults to OpenRouter. */
+  provider?: ProviderConfig;
   /** Path to the Codex CLI executable. Defaults to "codex" on PATH. */
   codexExecutable?: string;
   /** Hard kill after this many ms. Default 10 min. */
   timeoutMs?: number;
-  /** Stream Codex stdout/stderr to the parent? Default true (visible in Action logs). */
-  inheritStdio?: boolean;
 };
 
 export type CodexRunResult = {
@@ -59,13 +86,14 @@ export async function runCodex(
     workingDir,
     outputFile,
     outputSchemaPath,
+    provider = OPENROUTER_PROVIDER,
     codexExecutable = "codex",
     timeoutMs = 10 * 60 * 1000,
-    inheritStdio = true,
   } = options;
 
   const args = [
     "exec",
+    "--ignore-user-config",
     "--skip-git-repo-check",
     "--ephemeral",
     "--sandbox",
@@ -76,6 +104,16 @@ export async function runCodex(
     outputFile,
     "-m",
     model,
+    "-c",
+    `model_provider="${provider.id}"`,
+    "-c",
+    `model_providers.${provider.id}.name="${provider.name}"`,
+    "-c",
+    `model_providers.${provider.id}.base_url="${provider.baseUrl}"`,
+    "-c",
+    `model_providers.${provider.id}.env_key="${provider.envKey}"`,
+    "-c",
+    `model_providers.${provider.id}.wire_api="${provider.wireApi}"`,
   ];
 
   if (outputSchemaPath) {
@@ -87,21 +125,32 @@ export async function runCodex(
 
   const start = Date.now();
   const child = spawn(codexExecutable, args, {
-    stdio: [
-      "pipe",
-      inheritStdio ? "inherit" : "pipe",
-      inheritStdio ? "inherit" : "pipe",
-    ],
+    stdio: ["pipe", "pipe", "pipe"],
     env: process.env,
   });
 
-  if (!child.stdin) {
+  if (!child.stdin || !child.stdout || !child.stderr) {
     throw new CodexRunError(
-      "enkii: failed to open stdin to codex CLI process.",
+      "enkii: failed to open pipes to codex CLI process.",
       1,
       Date.now() - start,
     );
   }
+
+  // Stream stdout + stderr to the parent process so logs are visible, AND
+  // capture them so we can include the tail in error messages.
+  let stderrBuf = "";
+  child.stdout.on("data", (chunk) => {
+    process.stdout.write(chunk);
+  });
+  child.stderr.on("data", (chunk) => {
+    process.stderr.write(chunk);
+    stderrBuf += chunk.toString();
+    if (stderrBuf.length > 8192) {
+      stderrBuf = stderrBuf.slice(-8192);
+    }
+  });
+
   child.stdin.write(prompt);
   child.stdin.end();
 
@@ -125,10 +174,12 @@ export async function runCodex(
   }
 
   if (exitCode !== 0) {
+    const stderrTail = stderrBuf.trim().slice(-2000);
+    const stderrFragment = stderrTail
+      ? `\n--- codex stderr (tail) ---\n${stderrTail}\n--- end ---`
+      : "";
     throw new CodexRunError(
-      `enkii: codex exec failed with exit code ${exitCode}. ` +
-        `Cause: the harness or the upstream model returned a non-zero status. ` +
-        `Fix: retry with @enkii /review. If repeated, check the action logs above and file an issue with the run link.`,
+      `enkii: codex exec failed with exit code ${exitCode}.${stderrFragment}`,
       exitCode,
       durationMs,
     );

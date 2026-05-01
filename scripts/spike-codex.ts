@@ -115,20 +115,41 @@ Output a JSON object matching the provided schema. Only include findings that ar
     process.exit(1);
   }
 
+  // Codex returns markdown (prose + fenced JSON block), not raw JSON, even with
+  // --output-schema set. Extract the largest fenced JSON block, fall back to
+  // the whole message.
+  const jsonText = extractFencedJson(result.finalMessage) ?? result.finalMessage;
+
   try {
-    const parsed = JSON.parse(result.finalMessage);
+    const parsed = JSON.parse(jsonText);
     const findingCount = Array.isArray(parsed?.findings)
       ? parsed.findings.length
       : 0;
     console.log("");
-    console.log(`✓ Output is valid JSON. ${findingCount} findings.`);
+    console.log(`✓ Extracted JSON. ${findingCount} findings.`);
+    console.log(`  Tokens are reported by codex above; latency ${(result.durationMs / 1000).toFixed(1)}s.`);
     if (findingCount === 0) {
-      console.log("Heads up: model produced 0 findings. The off-by-one in the sample diff should be caught.");
+      console.log("Heads up: model produced 0 findings. (For the off-by-one sample, V4 Pro often correctly notes the change is a no-op rather than a bug — that's expected.)");
     }
   } catch (e) {
-    console.error("Spike FAILED: final message is not valid JSON:", e);
+    console.error("Spike FAILED: could not extract valid JSON from final message:", e);
     process.exit(1);
   }
+}
+
+/**
+ * Find the largest ```json ... ``` (or just ``` ... ```) block in a markdown
+ * string. Returns the inner JSON text, or null if no fenced block found.
+ */
+function extractFencedJson(text: string): string | null {
+  const fences = [...text.matchAll(/```(?:json)?\s*\n([\s\S]*?)\n```/g)];
+  if (fences.length === 0) return null;
+  // Pick the largest match — usually the one we want.
+  let best = "";
+  for (const m of fences) {
+    if (m[1] && m[1].length > best.length) best = m[1];
+  }
+  return best || null;
 }
 
 main().catch((err) => {
