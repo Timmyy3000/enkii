@@ -9,9 +9,9 @@ inputs:
     description: "OpenRouter API key (required). Generate at https://openrouter.ai/keys."
     required: true
   github_token:
-    description: "GitHub token. Defaults to ${{ github.token }} if unset. Set this if you need a custom GitHub App token."
+    description: "GitHub token. If unset, the action falls back to the runner's automatic GITHUB_TOKEN (i.e. github.token). Set this only if you need a custom GitHub App token."
     required: false
-    default: ${{ github.token }}
+    default: ""
   review_model:
     description: "Model used for code review. Defaults to '@preset/enkii' which expects an OpenRouter preset named 'enkii' on the consumer's account (recommended for caching). Override with any OpenRouter model id (e.g. 'deepseek/deepseek-v4-pro') if you don't want to use a preset."
     required: false
@@ -76,7 +76,7 @@ runs:
         bun run "${GITHUB_ACTION_PATH}/src/entrypoints/prepare.ts"
       env:
         OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
-        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token != '' && inputs.github_token || github.token }}
         REVIEW_MODEL: ${{ inputs.review_model }}
         SECURITY_MODEL: ${{ inputs.security_model }}
         REVIEW_SKILL_PATH: ${{ inputs.review_skill_path }}
@@ -91,7 +91,7 @@ runs:
         bun run "${GITHUB_ACTION_PATH}/src/entrypoints/run-review.ts"
       env:
         OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
-        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token != '' && inputs.github_token || github.token }}
         REVIEW_MODEL: ${{ inputs.review_model }}
         REVIEW_SKILL_PATH: ${{ inputs.review_skill_path }}
 
@@ -102,7 +102,7 @@ runs:
       run: |
         bun run "${GITHUB_ACTION_PATH}/src/entrypoints/post-review.ts"
       env:
-        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token != '' && inputs.github_token || github.token }}
         VALIDATED_PATH: ${{ steps.run_review.outputs.validated_path }}
         ENKII_REVIEW_KIND: code
 
@@ -114,7 +114,7 @@ runs:
         bun run "${GITHUB_ACTION_PATH}/src/entrypoints/run-security-review.ts"
       env:
         OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
-        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token != '' && inputs.github_token || github.token }}
         SECURITY_MODEL: ${{ inputs.security_model }}
         SECURITY_SKILL_PATH: ${{ inputs.security_skill_path }}
 
@@ -125,7 +125,7 @@ runs:
       run: |
         bun run "${GITHUB_ACTION_PATH}/src/entrypoints/post-review.ts"
       env:
-        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token != '' && inputs.github_token || github.token }}
         VALIDATED_PATH: ${{ steps.run_security_review.outputs.validated_path }}
         ENKII_REVIEW_KIND: security
 
@@ -135,5 +135,5 @@ runs:
       run: |
         bun run "${GITHUB_ACTION_PATH}/src/entrypoints/post-help.ts"
       env:
-        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token }}
+        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token != '' && inputs.github_token || github.token }}
         ENKII_COMMAND: ${{ steps.prepare.outputs.enkii_command }}
