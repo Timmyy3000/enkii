@@ -20,6 +20,7 @@
     "@actions/github": "^6.0.1",
     "@mariozechner/pi-agent-core": "0.73.0",
     "@mariozechner/pi-ai": "0.73.0",
+    "@mariozechner/pi-coding-agent": "0.73.0",
     "@octokit/auth-app": "^7.1.5",
     "@octokit/graphql": "^8.2.2",
     "@octokit/rest": "^21.1.1",

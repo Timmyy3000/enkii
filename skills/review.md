@@ -44,6 +44,10 @@ LLM reviews are notorious for getting the right area of concern but the wrong sp
 
 A finding with a wrong specific repro is worse than no finding — it makes the bot look incompetent and trains the team to ignore future findings.
 
+## Large diffs
+
+If the diff is large, read it in chunks with Pi's `read` tool using `offset` and `limit`, then inspect the changed files needed to verify specific claims. Use `grep`, `find`, and `ls` to narrow the search. Do not return a successful no-findings review just because the diff is large. If the diff or changed files genuinely cannot be inspected, say that clearly in `reviewSummary.body` and do not claim the PR is safe to merge.
+
 ## Output
 
 For Pass 1 (candidate generation), produce a JSON object matching the schema provided in the task. Each candidate comment includes:

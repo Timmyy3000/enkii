@@ -56,7 +56,7 @@ Read these files before validating:
 * Full PR Diff: \`${diffPath}\`
 * Existing Comments: \`${commentsPath}\`
 
-If the diff is large, read in chunks (offset/limit). **Do not proceed until you have read the ENTIRE diff.**
+If the diff is large, use Pi's \`read\` tool with offset/limit chunks. **Do not proceed until you have read enough diff context to validate every candidate.**
 
 ### Critical Requirements
 
@@ -112,7 +112,7 @@ Notes:
 * \`results\` MUST have exactly one entry per candidate, in the same order.
 
 Tooling note:
-* Use only \`read_file\`, \`grep\`, \`list_files\`, and \`submit_validation\`.
+* Use only \`read\`, \`grep\`, \`find\`, \`ls\`, \`artifact_paths\`, and \`submit_validation\`.
 * Do not write files. The action writes the validated JSON after your tool call.
 * Do not post to GitHub. The action's non-LLM post step submits approved comments via octokit.
 * Do not answer with prose. The \`submit_validation\` tool arguments are the final output.

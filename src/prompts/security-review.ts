@@ -44,6 +44,13 @@ Precomputed data files:
 - Existing Comments: \`${commentsPath}\`
 </context>
 
+<reading_requirements>
+- You MUST inspect the PR diff before submitting the security review.
+- Use Pi's \`read\` tool to inspect files. If \`read\` says the diff is truncated, continue reading with the indicated \`offset\` until you have enough diff context to review security-relevant changed hunks.
+- If the diff is very large, use \`grep\`, \`find\`, \`ls\`, and targeted \`read\` calls to inspect relevant changed files, but do not submit a successful no-findings review solely because the diff was large.
+- If you genuinely cannot inspect the diff or changed files, say that clearly in \`reviewSummary.body\` and do not claim the PR is safe to merge.
+</reading_requirements>
+
 <output_spec>
 When finished, call \`submit_review\` exactly once using this exact schema:
 
@@ -98,7 +105,7 @@ When finished, call \`submit_review\` exactly once using this exact schema:
 **DO NOT** post to GitHub.
 **DO NOT** invoke any PR mutation tools (inline comments, submit review, delete/minimize/reply/resolve, etc.).
 **DO NOT** modify files.
-Use only \`read_file\`, \`grep\`, \`list_files\`, and \`submit_review\`.
+Use only \`read\`, \`grep\`, \`find\`, \`ls\`, \`artifact_paths\`, and \`submit_review\`.
 Do not answer with prose. The \`submit_review\` tool arguments are the final output.
 </critical_constraints>
 `;

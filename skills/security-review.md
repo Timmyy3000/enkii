@@ -44,6 +44,10 @@ Same rule as code review: get the specific repro right or don't post.
 
 A wrong security finding ("this is SQL injection" when it's actually parameterized) is much worse than a missed one — it erodes trust in every future security comment.
 
+## Large diffs
+
+If the diff is large, read it in chunks with Pi's `read` tool using `offset` and `limit`, then inspect the changed files needed to verify specific security claims. Use `grep`, `find`, and `ls` to narrow the search. Do not return a successful no-findings review just because the diff is large. If the diff or changed files genuinely cannot be inspected, say that clearly in `reviewSummary.body` and do not claim the PR is safe to merge.
+
 ## Output format
 
 Same JSON schema as code review. Comment body prefixed with `[P0] [security]` / `[P1] [security]` / etc.

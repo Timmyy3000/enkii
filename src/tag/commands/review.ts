@@ -14,11 +14,10 @@
 
 import { writeFile, mkdir } from "fs/promises";
 import { dirname, join } from "path";
+import { createReadOnlyTools } from "@mariozechner/pi-coding-agent";
+import { Type } from "@mariozechner/pi-ai";
 import type { infer as zInfer, ZodTypeAny } from "zod";
 import { runAgent } from "../../runtime/run-agent";
-import { createReadFileTool } from "../../runtime/tools/read-file";
-import { createGrepTool } from "../../runtime/tools/grep";
-import { createListFilesTool } from "../../runtime/tools/list-files";
 import {
   createSubmitCandidatesTool,
   createSubmitValidatedTool,
@@ -189,10 +188,31 @@ function createContextTools(
   ];
 
   return [
-    createReadFileTool({ workingDir, allowedRoots }),
-    createGrepTool({ workingDir }),
-    createListFilesTool({ workingDir, allowedRoots }),
+    ...createReadOnlyTools(workingDir),
+    createArtifactPathsTool(allowedRoots),
   ];
+}
+
+function createArtifactPathsTool(allowedRoots: string[]) {
+  return {
+    name: "artifact_paths",
+    label: "Artifact Paths",
+    description:
+      "List the precomputed review artifact directories available as absolute paths.",
+    parameters: Type.Object({}),
+    executionMode: "sequential" as const,
+    execute: async () => ({
+      content: [
+        {
+          type: "text" as const,
+          text:
+            "Precomputed artifact roots:\n" +
+            [...new Set(allowedRoots)].map((path) => `- ${path}`).join("\n"),
+        },
+      ],
+      details: { roots: allowedRoots },
+    }),
+  };
 }
 
 function synthesizeValidatedFromCandidates(

@@ -15,6 +15,7 @@
 - 2026-05-05 Pi/OpenRouter spike succeeded with `@preset/enkii`: model called `read_file`, then `submit_review`; `CandidatesPassSchema` parsed; inline sample completed in 27.4s.
 - 2026-05-05 production `runReview` smoke with temp artifacts succeeded through Pi runtime: read artifacts, used tools, called `submit_review`, wrote candidates/validated in 65.0s.
 - GitHub review comments cannot rely on custom CSS for colored severity chips; use markdown image badges from shields.io and bold the parsed title mechanically in the post step.
+- Pi's SDK package (`@mariozechner/pi-coding-agent`) exports reusable `createReadOnlyTools(cwd)` / `createReadTool` / `createGrepTool` factories compatible with `pi-agent-core` `AgentTool`; use those instead of maintaining local duplicate read/grep/list tools.
 
 ## Patterns That Don't Work
 - Assuming user-provided plan paths are relative to the current repo root without checking.

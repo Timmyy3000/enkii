@@ -177,7 +177,12 @@ function buildSummaryBody(args: {
   const { marker, summary, approved, totalApproved, spillover, kind = "code" } =
     args;
   const parts: string[] = [marker, brandedHeader(kind)];
-  const score = computeMergeabilityScore(approved, totalApproved);
+  const incompleteReview = isIncompleteReview(summary);
+  const score = computeMergeabilityScore({
+    approved,
+    totalApproved,
+    incompleteReview,
+  });
 
   if (summary) {
     parts.push("### enkii Summary");
@@ -191,7 +196,7 @@ function buildSummaryBody(args: {
   }
 
   parts.push(`**Mergeability Score:** ${score}/5`);
-  parts.push(buildMergeabilityVerdict(score, totalApproved));
+  parts.push(buildMergeabilityVerdict(score, totalApproved, incompleteReview));
 
   if (spillover.length > 0) {
     parts.push("");
@@ -246,9 +251,14 @@ function severityBadge(severity: Severity): string {
 }
 
 function computeMergeabilityScore(
-  approved: Candidate[],
-  totalApproved: number,
+  args: {
+    approved: Candidate[];
+    totalApproved: number;
+    incompleteReview: boolean;
+  },
 ): number {
+  const { approved, totalApproved, incompleteReview } = args;
+  if (incompleteReview) return 1;
   if (totalApproved === 0) return 5;
   const severities = approved.map(getSeverity);
   if (severities.includes("P0")) return 1;
@@ -260,7 +270,11 @@ function computeMergeabilityScore(
 function buildMergeabilityVerdict(
   score: number,
   totalApproved: number,
+  incompleteReview: boolean,
 ): string {
+  if (incompleteReview) {
+    return "Manual review required; enkii could not inspect enough diff context to assess mergeability.";
+  }
   if (score === 5) return "Safe to merge from this review's perspective.";
   if (score >= 4) {
     return "Likely mergeable after reviewing the flagged low-risk comments.";
@@ -272,4 +286,11 @@ function buildMergeabilityVerdict(
     return "Do not merge until the blocking findings are fixed.";
   }
   return "Safe to merge from this review's perspective.";
+}
+
+function isIncompleteReview(summary?: string): boolean {
+  if (!summary) return false;
+  return /unable to complete|cannot complete|could not inspect|cannot inspect|manual review required|diff(?: file)? .*too large|without access to .*diff|could not be inspected/i.test(
+    summary,
+  );
 }
