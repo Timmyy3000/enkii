@@ -26,10 +26,6 @@ export function generateReviewValidatorPrompt(
   const reviewCandidatesPath =
     process.env.REVIEW_CANDIDATES_PATH ??
     "$RUNNER_TEMP/enkii-prompts/review_candidates.json";
-  const reviewValidatedPath =
-    process.env.REVIEW_VALIDATED_PATH ??
-    "$RUNNER_TEMP/enkii-prompts/review_validated.json";
-
   const includeSuggestions = context.includeSuggestions !== false;
 
   const passInstruction = includeSuggestions
@@ -68,7 +64,9 @@ If the diff is large, read in chunks (offset/limit). **Do not proceed until you 
 2. Preserve ordering: keep results in the same order as candidates.
 3. **Posting rule (STRICT):** Only post comments where \`status === "approved"\`. Never post rejected items.
 
-### Output: Write \`${reviewValidatedPath}\`
+### Output: call \`submit_validation\`
+
+When finished, call \`submit_validation\` exactly once using this schema:
 
 \`\`\`json
 {
@@ -88,8 +86,7 @@ If the diff is large, read in chunks (offset/limit). **Do not proceed until you 
         "body": "[P1] Title\\n\\n1 paragraph.",
         "line": 42,
         "startLine": null,
-        "side": "RIGHT",
-        "commit_id": "${prHeadSha}"
+        "side": "RIGHT"
       }
     },
     {
@@ -99,8 +96,7 @@ If the diff is large, read in chunks (offset/limit). **Do not proceed until you 
         "body": "[P2] ...",
         "line": 10,
         "startLine": null,
-        "side": "RIGHT",
-        "commit_id": "${prHeadSha}"
+        "side": "RIGHT"
       },
       "reason": "Not a real bug because ..."
     }
@@ -113,22 +109,12 @@ If the diff is large, read in chunks (offset/limit). **Do not proceed until you 
 \`\`\`
 
 Notes:
-* Use \`commit_id\` = \`${prHeadSha}\`.
 * \`results\` MUST have exactly one entry per candidate, in the same order.
 
 Tooling note:
-* If the tools list includes \`ApplyPatch\` (common for OpenAI models like GPT-5.2), use \`ApplyPatch\` to create/update the file at the exact path.
-* Otherwise, use \`Create\` (or \`Edit\` if overwriting) to write the file.
-
-### Post approved items
-
-After writing \`${reviewValidatedPath}\`, post comments ONLY for \`status === "approved"\`:
-
-* (Phase 3 will wire posting. For Phase 1 the LLM only writes \`${reviewValidatedPath}\`. The action's non-LLM post step reads that file and submits a single batched review via octokit.)
-* Do **NOT** include a \`body\` parameter in \`submit_review\`.
-* Tracking comment update is handled by the action's post step, not by tool calls in the prompt.
-* If any approved comments contain \`[security]\` in their body, prepend a security badge to the tracking comment: \`![Security Review](https://img.shields.io/badge/security%20review-ran-blue)\`. This indicates that security analysis was performed as part of the review.
-* Do **NOT** post the summary as a separate comment or as the body of \`submit_review\`.
-* Do not approve or request changes.
+* Use only \`read_file\`, \`grep\`, \`list_files\`, and \`submit_validation\`.
+* Do not write files. The action writes the validated JSON after your tool call.
+* Do not post to GitHub. The action's non-LLM post step submits approved comments via octokit.
+* Do not answer with prose. The \`submit_validation\` tool arguments are the final output.
 `;
 }

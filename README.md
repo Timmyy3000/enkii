@@ -12,7 +12,7 @@ A small GitHub Action that runs LLM-powered code reviews on pull requests. Same 
 
 - **You bring the inference.** It points at OpenRouter with your API key. Default model is DeepSeek V4 Pro; override with any OpenRouter model ID.
 - **No vendor backend.** enkii has no servers, no auth, no billing. Runs entirely on your GitHub Actions minutes + your OpenRouter spend.
-- **Open weights by default.** OSS-friendly stack: OpenCode harness, OpenRouter routing, DeepSeek V4 Pro (or any OSS model you prefer).
+- **Open weights by default.** OSS-friendly stack: embedded `pi-agent-core`, OpenRouter routing, DeepSeek V4 Pro (or any OSS model you prefer).
 - **Methodology is the product.** The reviewer's behavior is defined by markdown skill files (`review.md`, `security-review.md`) bundled in this repo. Override with your own `.enkii/review.md` to teach it your team's conventions.
 
 ## How it'll work (when shipped)
@@ -95,7 +95,7 @@ It's not trying to be the best reviewer on the market. It's trying to be a usefu
 ## Related projects
 
 - [`pr-agent`](https://github.com/qodo-ai/pr-agent) (Qodo, Apache 2.0) — closest OSS alternative; mature, multi-model, similar pitch. If pr-agent works for you, use pr-agent. enkii differs mainly in skill markdown as the customization unit + runtime-agnostic methodology.
-- [`Factory-AI/droid-action`](https://github.com/Factory-AI/droid-action) (MIT) — Factory's open-sourced action plumbing. enkii borrows the GitHub auth + PR data fetching + prompt scaffolding from here, replaces the closed `droid` CLI runtime with OpenCode + OpenRouter.
+- [`Factory-AI/droid-action`](https://github.com/Factory-AI/droid-action) (MIT) — Factory's open-sourced action plumbing. enkii borrows the GitHub auth + PR data fetching + prompt scaffolding from here, replaces the closed `droid` CLI runtime with `pi-agent-core` + OpenRouter.
 - [GitHub Copilot Code Review](https://docs.github.com/copilot) — native to GitHub. Use this if you're on a Copilot plan and don't need self-hosted.
 
 ## License

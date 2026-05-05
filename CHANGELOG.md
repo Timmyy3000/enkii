@@ -2,6 +2,20 @@
 
 All notable changes to enkii will be documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning follows [SemVer](https://semver.org/).
 
+## [0.1.0-alpha.2] — 2026-05-05
+
+### Changed
+
+- Replaced the Codex CLI runtime with embedded `@mariozechner/pi-agent-core` and `@mariozechner/pi-ai` on OpenRouter.
+- Pass 1 and Pass 2 now use submit tools (`submit_review`, `submit_validation`) for structured output instead of parsing Codex final messages.
+- Removed the GitHub Action's Node/Codex install step; setup now installs Bun dependencies and runs enkii directly.
+- Single-pass review remains the default. The Pass 2 validator remains available behind `enable_validator`.
+- Code and security reviews can run in parallel for automatic PR events.
+
+### Removed
+
+- Removed the abandoned Docker image workflow and Docker files from the alpha.2 pivot.
+
 ## [0.1.0-alpha.1] — 2026-05-01
 
 First end-to-end alpha. Code-complete on the v0.1 plan; not yet validated against real PRs (that happens next during docsyde / external-corpus testing).

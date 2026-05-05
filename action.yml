@@ -60,17 +60,6 @@ runs:
       with:
         bun-version: 1.2.11
 
-    - name: Setup Node (for Codex CLI install)
-      uses: actions/setup-node@v4
-      with:
-        node-version: "20"
-
-    - name: Install Codex CLI
-      shell: bash
-      run: |
-        npm install -g @openai/codex@0.125.0
-        codex --version
-
     - name: Install enkii dependencies
       shell: bash
       run: |

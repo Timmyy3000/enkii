@@ -23,15 +23,11 @@ export function generateSecurityCandidatesPrompt(
     context.reviewArtifacts?.descriptionPath ??
     "$RUNNER_TEMP/enkii-prompts/pr_description.txt";
 
-  const reviewCandidatesPath =
-    process.env.REVIEW_CANDIDATES_PATH ??
-    "$RUNNER_TEMP/enkii-prompts/review_candidates.json";
-
   const skillContent = context.skillContent ?? "";
 
   return `${skillContent ? skillContent + "\n\n---\n\n" : ""}You are a senior security engineer performing a security-focused code review.
 
-Your task: Review PR #${prNumber} in ${repoFullName} and generate a JSON file with **high-confidence security vulnerability** findings.
+Your task: Review PR #${prNumber} in ${repoFullName} and submit **high-confidence security vulnerability** findings.
 
 Apply the methodology above to execute **Pass 1: Candidate Generation**.
 
@@ -49,7 +45,7 @@ Precomputed data files:
 </context>
 
 <output_spec>
-Write output to \`${reviewCandidatesPath}\` using this exact schema:
+When finished, call \`submit_review\` exactly once using this exact schema:
 
 \`\`\`json
 {
@@ -67,8 +63,7 @@ Write output to \`${reviewCandidatesPath}\` using this exact schema:
       "body": "[P1] [security] Title\\n\\n1 paragraph.",
       "line": 42,
       "startLine": null,
-      "side": "RIGHT",
-      "commit_id": "<head sha>"
+      "side": "RIGHT"
     }
   ],
   "reviewSummary": {
@@ -93,7 +88,6 @@ Write output to \`${reviewCandidatesPath}\` using this exact schema:
   - \`line\`: Target line number (single-line) or end line number (multi-line). Must be >= 0.
   - \`startLine\`: \`null\` for single-line comments, or start line number for multi-line comments
   - \`side\`: "RIGHT" for new/modified code (default), "LEFT" only for removed code
-  - \`commit_id\`: "${prHeadSha}"
 
 - **reviewSummary**:
   - \`body\`: 1-3 sentence security assessment
@@ -103,8 +97,9 @@ Write output to \`${reviewCandidatesPath}\` using this exact schema:
 <critical_constraints>
 **DO NOT** post to GitHub.
 **DO NOT** invoke any PR mutation tools (inline comments, submit review, delete/minimize/reply/resolve, etc.).
-**DO NOT** modify any files other than writing to \`${reviewCandidatesPath}\`.
-Output ONLY the JSON file — no additional commentary.
+**DO NOT** modify files.
+Use only \`read_file\`, \`grep\`, \`list_files\`, and \`submit_review\`.
+Do not answer with prose. The \`submit_review\` tool arguments are the final output.
 </critical_constraints>
 `;
 }

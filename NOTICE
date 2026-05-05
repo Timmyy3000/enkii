@@ -10,5 +10,6 @@ are adapted from droid-action with modifications. The original copyright
 notices and the MIT License are preserved.
 
 The `droid` runtime CLI from Factory is NOT included or used in enkii.
-enkii uses OpenCode (https://github.com/sst/opencode) as the agent harness
-and OpenRouter (https://openrouter.ai) for model inference.
+enkii uses pi-agent-core / pi-ai (https://github.com/badlogic/pi-mono)
+as the agent harness and OpenRouter (https://openrouter.ai) for model
+inference.

@@ -2,14 +2,9 @@
  * Runtime contracts between Pass 1 (candidates) and Pass 2 (validator) and
  * the post step.
  *
- * Two formats:
- *   - zod schemas — for parsing + type-narrowing on the TypeScript side.
- *   - JSON Schema (plain JS objects) — written to disk and passed to Codex
- *     via `--output-schema` so the model is constrained to the same shape.
- *
- * Keep the two in sync manually. v1 may swap to a single source of truth
- * (e.g. zod-to-json-schema), but for v0.1 hand-written keeps the surface
- * small and easy to read.
+ * The Pi runtime constrains model output through submit_* tool schemas, then
+ * these zod schemas parse and type-narrow the submitted arguments before the
+ * post step consumes them.
  */
 
 import { z } from "zod";
@@ -86,111 +81,3 @@ export const ValidatedPassSchema = z.object({
 
 export type ValidatedItem = z.infer<typeof ValidatedItemSchema>;
 export type ValidatedPass = z.infer<typeof ValidatedPassSchema>;
-
-// -----------------------------------------------------------------------------
-// JSON Schema variants (passed to Codex via --output-schema)
-// -----------------------------------------------------------------------------
-
-export const CANDIDATES_OUTPUT_SCHEMA = {
-  type: "object",
-  required: ["version", "meta", "comments"],
-  properties: {
-    version: { type: "integer", const: 1 },
-    meta: {
-      type: "object",
-      required: ["repo", "prNumber", "headSha", "baseRef"],
-      properties: {
-        repo: { type: "string" },
-        prNumber: { type: ["number", "string"] },
-        headSha: { type: "string" },
-        baseRef: { type: "string" },
-        generatedAt: { type: "string" },
-        pass1HeadSha: { type: "string" },
-      },
-    },
-    comments: {
-      type: "array",
-      items: {
-        type: "object",
-        required: ["path", "line", "body"],
-        properties: {
-          path: { type: "string" },
-          line: { type: "integer", minimum: 0 },
-          startLine: { type: ["integer", "null"], minimum: 0 },
-          side: { type: "string", enum: ["LEFT", "RIGHT"] },
-          body: { type: "string" },
-          severity: { type: "string", enum: ["P0", "P1", "P2", "nit"] },
-        },
-      },
-    },
-    reviewSummary: {
-      type: "object",
-      properties: { body: { type: "string" } },
-    },
-  },
-} as const;
-
-export const VALIDATED_OUTPUT_SCHEMA = {
-  type: "object",
-  required: ["version", "meta", "results"],
-  properties: {
-    version: { type: "integer", const: 1 },
-    meta: {
-      type: "object",
-      required: ["repo", "prNumber", "headSha", "baseRef"],
-      properties: {
-        repo: { type: "string" },
-        prNumber: { type: ["number", "string"] },
-        headSha: { type: "string" },
-        baseRef: { type: "string" },
-        validatedAt: { type: "string" },
-      },
-    },
-    results: {
-      type: "array",
-      items: {
-        oneOf: [
-          {
-            type: "object",
-            required: ["status", "comment"],
-            properties: {
-              status: { type: "string", const: "approved" },
-              comment: { $ref: "#/definitions/Candidate" },
-            },
-          },
-          {
-            type: "object",
-            required: ["status", "candidate", "reason"],
-            properties: {
-              status: { type: "string", const: "rejected" },
-              candidate: { $ref: "#/definitions/Candidate" },
-              reason: { type: "string" },
-            },
-          },
-        ],
-      },
-    },
-    reviewSummary: {
-      type: "object",
-      required: ["status", "body"],
-      properties: {
-        status: { type: "string", enum: ["approved", "rejected"] },
-        body: { type: "string" },
-      },
-    },
-  },
-  definitions: {
-    Candidate: {
-      type: "object",
-      required: ["path", "line", "body"],
-      properties: {
-        path: { type: "string" },
-        line: { type: "integer", minimum: 0 },
-        startLine: { type: ["integer", "null"], minimum: 0 },
-        side: { type: "string", enum: ["LEFT", "RIGHT"] },
-        body: { type: "string" },
-        severity: { type: "string", enum: ["P0", "P1", "P2", "nit"] },
-      },
-    },
-  },
-} as const;

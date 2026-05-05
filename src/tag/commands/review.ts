@@ -12,16 +12,20 @@
  * collide on disk.
  */
 
-import { writeFile, readFile, mkdir } from "fs/promises";
-import { join } from "path";
-import type { ZodTypeAny, infer as zInfer } from "zod";
-import { runCodex } from "../../runtime/run-codex";
-import { extractAndParseJson } from "../../runtime/extract-json";
+import { writeFile, mkdir } from "fs/promises";
+import { dirname, join } from "path";
+import type { infer as zInfer, ZodTypeAny } from "zod";
+import { runAgent } from "../../runtime/run-agent";
+import { createReadFileTool } from "../../runtime/tools/read-file";
+import { createGrepTool } from "../../runtime/tools/grep";
+import { createListFilesTool } from "../../runtime/tools/list-files";
+import {
+  createSubmitCandidatesTool,
+  createSubmitValidatedTool,
+} from "../../runtime/tools/submit";
 import {
   CandidatesPassSchema,
   ValidatedPassSchema,
-  CANDIDATES_OUTPUT_SCHEMA,
-  VALIDATED_OUTPUT_SCHEMA,
   type CandidatesPass,
   type ValidatedPass,
 } from "../../runtime/schemas";
@@ -37,7 +41,7 @@ export type RunReviewOptions = {
   preparedContext: PreparedContext;
   workingDir: string;
   model: string;
-  /** Where to write candidates.json + validated.json + schema files. */
+  /** Where to write candidates.json + validated.json files. */
   promptsDir: string;
   /** When true, run Pass 2 validator. When false, post Pass 1 directly. */
   enableValidator?: boolean;
@@ -66,35 +70,8 @@ export async function runReview(
   await mkdir(promptsDir, { recursive: true });
 
   const filePrefix = kind === "security" ? "security" : "review";
-  const candidatesSchemaPath = join(
-    promptsDir,
-    `${filePrefix}_candidates_schema.json`,
-  );
-  const validatedSchemaPath = join(
-    promptsDir,
-    `${filePrefix}_validated_schema.json`,
-  );
   const candidatesPath = join(promptsDir, `${filePrefix}_candidates.json`);
   const validatedPath = join(promptsDir, `${filePrefix}_validated.json`);
-  const candidatesOutFile = join(
-    promptsDir,
-    `${filePrefix}_pass1_codex_message.txt`,
-  );
-  const validatedOutFile = join(
-    promptsDir,
-    `${filePrefix}_pass2_codex_message.txt`,
-  );
-
-  await writeFile(
-    candidatesSchemaPath,
-    JSON.stringify(CANDIDATES_OUTPUT_SCHEMA, null, 2),
-  );
-  if (enableValidator) {
-    await writeFile(
-      validatedSchemaPath,
-      JSON.stringify(VALIDATED_OUTPUT_SCHEMA, null, 2),
-    );
-  }
 
   console.log(`enkii: starting ${kind} Pass 1 (candidates)...`);
   const pass1Prompt =
@@ -102,22 +79,29 @@ export async function runReview(
       ? generateSecurityCandidatesPrompt(preparedContext)
       : generateReviewCandidatesPrompt(preparedContext);
 
-  const pass1 = await runCodex({
-    prompt: pass1Prompt,
+  let candidatesOutput: unknown;
+  const pass1 = await runAgent({
+    systemPrompt:
+      "You are enkii's code review runtime. Use tools to inspect files and submit structured output.",
+    userPrompt: pass1Prompt,
     model,
-    workingDir,
-    outputFile: candidatesOutFile,
-    outputSchemaPath: candidatesSchemaPath,
+    tools: [
+      ...createContextTools(workingDir, preparedContext),
+      createSubmitCandidatesTool((args) => {
+        candidatesOutput = args;
+      }),
+    ],
+    outputToolName: "submit_review",
+    getOutput: () => candidatesOutput,
   });
 
   console.log(
     `enkii: ${kind} Pass 1 finished in ${(pass1.durationMs / 1000).toFixed(1)}s`,
   );
 
-  const candidates = await loadPassOutput(
+  const candidates = parsePassOutput(
     `${kind} Pass 1`,
-    candidatesPath,
-    pass1.finalMessage,
+    pass1.output,
     CandidatesPassSchema,
     kind,
   );
@@ -134,22 +118,29 @@ export async function runReview(
     process.env.REVIEW_VALIDATED_PATH = validatedPath;
     const pass2Prompt = generateReviewValidatorPrompt(preparedContext);
 
-    const pass2 = await runCodex({
-      prompt: pass2Prompt,
+    let validatedOutput: unknown;
+    const pass2 = await runAgent({
+      systemPrompt:
+        "You are enkii's review validation runtime. Use tools to inspect files and submit structured validation output.",
+      userPrompt: pass2Prompt,
       model,
-      workingDir,
-      outputFile: validatedOutFile,
-      outputSchemaPath: validatedSchemaPath,
+      tools: [
+        ...createContextTools(workingDir, preparedContext, [candidatesPath]),
+        createSubmitValidatedTool((args) => {
+          validatedOutput = args;
+        }),
+      ],
+      outputToolName: "submit_validation",
+      getOutput: () => validatedOutput,
     });
 
     console.log(
       `enkii: ${kind} Pass 2 finished in ${(pass2.durationMs / 1000).toFixed(1)}s`,
     );
 
-    validated = await loadPassOutput(
+    validated = parsePassOutput(
       `${kind} Pass 2`,
-      validatedPath,
-      pass2.finalMessage,
+      pass2.output,
       ValidatedPassSchema,
       kind,
     );
@@ -179,6 +170,31 @@ export async function runReview(
   };
 }
 
+function createContextTools(
+  workingDir: string,
+  context: PreparedContext,
+  extraAllowedPaths: string[] = [],
+) {
+  const artifactPaths = context.reviewArtifacts
+    ? [
+        context.reviewArtifacts.diffPath,
+        context.reviewArtifacts.commentsPath,
+        context.reviewArtifacts.descriptionPath,
+      ]
+    : [];
+  const allowedRoots = [
+    workingDir,
+    ...artifactPaths.map((path) => dirname(path)),
+    ...extraAllowedPaths.map((path) => dirname(path)),
+  ];
+
+  return [
+    createReadFileTool({ workingDir, allowedRoots }),
+    createGrepTool({ workingDir }),
+    createListFilesTool({ workingDir, allowedRoots }),
+  ];
+}
+
 function synthesizeValidatedFromCandidates(
   candidates: CandidatesPass,
 ): ValidatedPass {
@@ -204,39 +220,20 @@ function synthesizeValidatedFromCandidates(
   };
 }
 
-async function loadPassOutput<S extends ZodTypeAny>(
+function parsePassOutput<S extends ZodTypeAny>(
   passName: string,
-  filePath: string,
-  finalMessage: string,
+  output: unknown,
   schema: S,
   kind: ReviewKind,
-): Promise<zInfer<S>> {
+): zInfer<S> {
   const command = kind === "security" ? "security" : "review";
-
-  const sources: { label: string; text: string }[] = [];
-  try {
-    sources.push({ label: `file ${filePath}`, text: await readFile(filePath, "utf8") });
-  } catch {
-    // Model didn't write the file; fall through to final message.
-  }
-  sources.push({ label: "Codex final message", text: finalMessage });
-
-  const errors: string[] = [];
-  for (const { label, text } of sources) {
-    try {
-      const parsed = extractAndParseJson(text);
-      const result = schema.safeParse(parsed);
-      if (result.success) return result.data;
-      errors.push(`${label}: ${result.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
-    } catch (err) {
-      errors.push(`${label}: ${(err as Error).message}`);
-    }
-  }
+  const result = schema.safeParse(output);
+  if (result.success) return result.data;
 
   throw new Error(
     `enkii: ${passName} output failed schema validation. ` +
-      `Cause: ${errors.join(" | ")}. ` +
-      `Fix: retry with @enkii /${command}. If repeated, the model may not be honoring the output schema.`,
+      `Cause: ${result.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}. ` +
+      `Fix: retry with @enkii /${command}. If repeated, the model may not be honoring the submit tool schema.`,
   );
 }
 
