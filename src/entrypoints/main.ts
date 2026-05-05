@@ -27,6 +27,7 @@ import { createOctokit } from "../github/api/client";
 import { parseGitHubContext, isEntityContext } from "../github/context";
 import { fetchPRBranchData } from "../github/data/pr-fetcher";
 import { computeReviewArtifacts } from "../github/data/review-artifacts";
+import { checkoutPullRequestHead } from "../github/data/pr-checkout";
 import { loadSkill } from "../skills/loader";
 import { shouldTriggerTag, prepareTagExecution } from "../tag";
 import {
@@ -116,7 +117,11 @@ async function run(): Promise<void> {
       return;
     }
 
-    const dispatch = await prepareTagExecution({ context, octokit, githubToken });
+    const dispatch = await prepareTagExecution({
+      context,
+      octokit,
+      githubToken,
+    });
     console.log(`enkii dispatch: ${dispatch.command}`);
     if (dispatch.reason) console.log(`Reason: ${dispatch.reason}`);
 
@@ -127,10 +132,7 @@ async function run(): Promise<void> {
 
     if (dispatch.command === "skip") return;
 
-    if (
-      dispatch.command === "help" ||
-      dispatch.command === "status"
-    ) {
+    if (dispatch.command === "help" || dispatch.command === "status") {
       await postHelpReply({
         octokit,
         context,
@@ -176,6 +178,10 @@ async function run(): Promise<void> {
     console.log(
       `enkii: fetching PR data for ${owner}/${repo}#${context.entityNumber}...`,
     );
+    checkoutPullRequestHead({
+      prNumber: context.entityNumber,
+      headSha: prBranch.headRefOid,
+    });
     const reviewArtifacts = await computeReviewArtifacts({
       baseRef: prBranch.baseRefName,
       tempDir: runnerTemp,
@@ -269,7 +275,9 @@ async function run(): Promise<void> {
 
     for (const result of results) {
       const marker =
-        result.kind === "security" ? ENKII_SECURITY_MARKER : ENKII_REVIEW_MARKER;
+        result.kind === "security"
+          ? ENKII_SECURITY_MARKER
+          : ENKII_REVIEW_MARKER;
       const post = await postReviewFromValidated({
         validated: result.validated,
         octokit: octokit.rest,
@@ -287,8 +295,7 @@ async function run(): Promise<void> {
       core.setOutput(`${result.kind}_review_id`, String(post.reviewId));
     }
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     core.setFailed(`enkii failed: ${errorMessage}`);
     process.exit(1);
   }
