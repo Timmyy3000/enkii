@@ -98,6 +98,7 @@ export async function postReviewFromValidated(args: {
   const summaryBody = buildSummaryBody({
     marker,
     summary: validated.reviewSummary?.body,
+    approved,
     totalApproved: approved.length,
     inlinePosted: inline.length,
     spillover,
@@ -137,7 +138,7 @@ function toGitHubReviewComment(c: Candidate) {
     start_side?: "LEFT" | "RIGHT";
   } = {
     path: c.path,
-    body: c.body,
+    body: formatReviewCommentBody(c),
     side: c.side ?? "RIGHT",
     line: c.line,
   };
@@ -167,21 +168,30 @@ function brandedHeader(kind: "code" | "security"): string {
 function buildSummaryBody(args: {
   marker: string;
   summary?: string;
+  approved: Candidate[];
   totalApproved: number;
   inlinePosted: number;
   spillover: Candidate[];
   kind?: "code" | "security";
 }): string {
-  const { marker, summary, totalApproved, spillover, kind = "code" } = args;
+  const { marker, summary, approved, totalApproved, spillover, kind = "code" } =
+    args;
   const parts: string[] = [marker, brandedHeader(kind)];
+  const score = computeMergeabilityScore(approved, totalApproved);
 
   if (summary) {
+    parts.push("### enkii Summary");
     parts.push(summary.trim());
   } else if (totalApproved === 0) {
+    parts.push("### enkii Summary");
     parts.push("Reviewed this PR and found no issues to flag.");
   } else {
+    parts.push("### enkii Summary");
     parts.push(`Reviewed this PR and posted ${totalApproved} comments.`);
   }
+
+  parts.push(`**Mergeability Score:** ${score}/5`);
+  parts.push(buildMergeabilityVerdict(score, totalApproved));
 
   if (spillover.length > 0) {
     parts.push("");
@@ -189,9 +199,77 @@ function buildSummaryBody(args: {
       `### Additional notes (${spillover.length} comments above the inline cap)`,
     );
     for (const c of spillover) {
-      parts.push(`- **\`${c.path}:${c.line}\`** — ${c.body.split("\n")[0]}`);
+      parts.push(
+        `- **\`${c.path}:${c.line}\`** — ${formatReviewCommentTitle(c)}`,
+      );
     }
   }
 
   return parts.join("\n\n");
+}
+
+type Severity = "P0" | "P1" | "P2" | "nit";
+
+function getSeverity(c: Candidate): Severity {
+  if (c.severity) return c.severity;
+  const match = c.body.match(/^\[(P0|P1|P2|nit)\]/i);
+  if (!match) return "P2";
+  const raw = match[1].toLowerCase();
+  return raw === "nit" ? "nit" : (raw.toUpperCase() as Severity);
+}
+
+function formatReviewCommentTitle(c: Candidate): string {
+  const firstLine = c.body.split("\n")[0]?.trim() ?? "";
+  return firstLine
+    .replace(/^\[(P0|P1|P2|nit)\]\s*/i, "")
+    .replace(/^\[security\]\s*/i, "")
+    .trim();
+}
+
+function formatReviewCommentBody(c: Candidate): string {
+  const severity = getSeverity(c);
+  const title = formatReviewCommentTitle(c);
+  const bodyWithoutTitle = c.body.split("\n").slice(1).join("\n").trim();
+  const badge = severityBadge(severity);
+  const heading = title ? `${badge} **${title}**` : badge;
+  return bodyWithoutTitle ? `${heading}\n\n${bodyWithoutTitle}` : heading;
+}
+
+function severityBadge(severity: Severity): string {
+  const color: Record<Severity, string> = {
+    P0: "red",
+    P1: "orange",
+    P2: "yellow",
+    nit: "lightgrey",
+  };
+  return `![${severity}](https://img.shields.io/badge/${severity}-${color[severity]}?style=flat-square)`;
+}
+
+function computeMergeabilityScore(
+  approved: Candidate[],
+  totalApproved: number,
+): number {
+  if (totalApproved === 0) return 5;
+  const severities = approved.map(getSeverity);
+  if (severities.includes("P0")) return 1;
+  if (severities.includes("P1")) return 3;
+  if (severities.includes("P2")) return 4;
+  return 4;
+}
+
+function buildMergeabilityVerdict(
+  score: number,
+  totalApproved: number,
+): string {
+  if (score === 5) return "Safe to merge from this review's perspective.";
+  if (score >= 4) {
+    return "Likely mergeable after reviewing the flagged low-risk comments.";
+  }
+  if (score >= 3) {
+    return "Not merge-ready until the flagged correctness issues are addressed.";
+  }
+  if (totalApproved > 0) {
+    return "Do not merge until the blocking findings are fixed.";
+  }
+  return "Safe to merge from this review's perspective.";
 }

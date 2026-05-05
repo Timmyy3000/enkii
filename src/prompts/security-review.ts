@@ -90,7 +90,7 @@ When finished, call \`submit_review\` exactly once using this exact schema:
   - \`side\`: "RIGHT" for new/modified code (default), "LEFT" only for removed code
 
 - **reviewSummary**:
-  - \`body\`: 1-3 sentence security assessment
+  - \`body\`: Greptile-style security summary: briefly describe the security-relevant surface reviewed, summarize the important findings by severity, and give clear merge guidance. Do not include a numeric score; enkii computes that mechanically.
 </schema_details>
 </output_spec>
 

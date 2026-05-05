@@ -106,7 +106,7 @@ ${bodyFieldDescription}
 ${sideFieldDescription}
 
 - **reviewSummary**:
-  - \`body\`: 1-3 sentence overall assessment
+  - \`body\`: Greptile-style review summary: briefly describe what the PR changes, summarize the important findings by severity, and give clear merge guidance. Do not include a numeric score; enkii computes that mechanically.
 </schema_details>
 </output_spec>
 

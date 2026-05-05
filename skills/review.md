@@ -52,6 +52,7 @@ For Pass 1 (candidate generation), produce a JSON object matching the schema pro
 - `line` — line number in the new file
 - `body` — comment text starting with `[P0]` / `[P1]` / `[P2]` / `[nit]` tag, then a one-line title, then a short paragraph explaining the issue and the fix. Concrete. No hedging.
 - `severity` — same as the body tag
+- `reviewSummary.body` — Greptile-style summary: what the PR changes, the important findings grouped by severity, and whether it is safe to merge after addressing them. Do not include a numeric score; enkii computes the Mergeability Score mechanically.
 
 For Pass 2 (validation), re-read each candidate's source. If the specific claim holds up, mark `approved`. If the area is right but the specific example is wrong, either rewrite the comment or mark `rejected` with a one-line reason. If the finding is style/preference rather than a bug, mark `rejected`.
 

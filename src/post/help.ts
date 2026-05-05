@@ -21,6 +21,7 @@ const HELP_BODY = `${brandedHeader("help")}
 I'm an open-source AI code review bot. You can invoke me on a PR with:
 
 - \`@enkii /review\` — re-run the code review on the latest commit
+- \`@enkii /benchmark\` — run a fresh code review without prior PR comments
 - \`@enkii /security\` — run a focused security review (separate thread)
 - \`@enkii help\` — show this message
 - \`@enkii status\` — show the most recent run on this PR

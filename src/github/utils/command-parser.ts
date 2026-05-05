@@ -3,6 +3,7 @@
  *
  * Recognized commands:
  *   - @enkii /review        re-run code review
+ *   - @enkii /benchmark     run a fresh code review ignoring prior comments
  *   - @enkii /security      run security review
  *   - @enkii (alone)        respond with help
  *   - @enkii help           respond with help
@@ -13,6 +14,7 @@ import type { GitHubContext } from "../context";
 
 export type EnkiiCommand =
   | "review"
+  | "benchmark"
   | "security"
   | "help"
   | "status"
@@ -40,6 +42,15 @@ export function parseEnkiiCommand(text: string): ParsedCommand | null {
     return {
       command: "review",
       raw: reviewMatch[0],
+      location: "body",
+    };
+  }
+
+  const benchmarkMatch = text.match(/@enkii\s+\/benchmark\b/i);
+  if (benchmarkMatch) {
+    return {
+      command: "benchmark",
+      raw: benchmarkMatch[0],
       location: "body",
     };
   }

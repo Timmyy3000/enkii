@@ -4,6 +4,11 @@ All notable changes to enkii will be documented here. Format follows [Keep a Cha
 
 ## [0.1.0-alpha.2] — 2026-05-05
 
+### Added
+
+- Added `@enkii /benchmark` to run a fresh code review without passing existing PR comments to the model, intended for replay benchmarks against older PRs.
+- Added Greptile-style review summaries with a mechanical Mergeability Score and colored severity badges for inline findings.
+
 ### Changed
 
 - Replaced the Codex CLI runtime with embedded `@mariozechner/pi-agent-core` and `@mariozechner/pi-ai` on OpenRouter.

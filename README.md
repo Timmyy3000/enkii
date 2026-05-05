@@ -48,6 +48,7 @@ Triggers:
 
 - `pull_request` (opened/synchronize/reopened) — automatic code review (skipped on draft PRs)
 - Comment `@enkii /review` — re-run code review
+- Comment `@enkii /benchmark` — run a fresh code review without prior PR comments
 - Comment `@enkii /security` — separate security review
 - Comment `@enkii` alone — replies with help
 

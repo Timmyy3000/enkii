@@ -148,10 +148,13 @@ async function run(): Promise<void> {
     }
 
     const wantCode =
-      dispatch.command === "auto" || dispatch.command === "review";
+      dispatch.command === "auto" ||
+      dispatch.command === "review" ||
+      dispatch.command === "benchmark";
     const wantSecurity =
       dispatch.command === "security" ||
       (dispatch.command === "auto" && runSecurity);
+    const benchmarkMode = dispatch.command === "benchmark";
 
     if (!wantCode && !wantSecurity) {
       console.log("enkii: nothing to run for this dispatch.");
@@ -183,7 +186,14 @@ async function run(): Promise<void> {
       title: prBranch.title,
       body: prBranch.body,
       githubToken,
+      ignoreExistingComments: benchmarkMode,
     });
+
+    if (benchmarkMode) {
+      console.log(
+        "enkii: benchmark mode enabled; existing PR comments are omitted from the review prompt.",
+      );
+    }
 
     const isForkPR = detectForkPR(context);
 

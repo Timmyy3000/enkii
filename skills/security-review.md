@@ -48,6 +48,8 @@ A wrong security finding ("this is SQL injection" when it's actually parameteriz
 
 Same JSON schema as code review. Comment body prefixed with `[P0] [security]` / `[P1] [security]` / etc.
 
+For `reviewSummary.body`, write a Greptile-style security summary: what security-relevant surface changed, the important findings grouped by severity, and whether it is safe to merge after addressing them. Do not include a numeric score; enkii computes the Mergeability Score mechanically.
+
 ## What this skill does NOT cover (yet)
 
 This is the v0.1 baseline. Phase 5 expands on:

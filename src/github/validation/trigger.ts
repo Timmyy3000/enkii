@@ -16,9 +16,12 @@ export function checkContainsTrigger(context: ParsedGitHubContext): boolean {
     inputs: { triggerPhrase },
   } = context;
 
-  // Check for specific @enkii commands (fill, review)
+  // Check for specific @enkii commands.
   const command = extractCommandFromContext(context);
-  if (command && ["fill", "review", "security"].includes(command.command)) {
+  if (
+    command &&
+    ["fill", "review", "benchmark", "security"].includes(command.command)
+  ) {
     console.log(
       `Detected @enkii ${command.command} command, triggering action`,
     );

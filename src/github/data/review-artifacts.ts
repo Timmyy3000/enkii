@@ -119,6 +119,19 @@ export async function fetchAndStoreComments(
   return commentsPath;
 }
 
+export async function storeEmptyComments(tempDir: string): Promise<string> {
+  const promptsDir = `${tempDir}/enkii-prompts`;
+  await mkdir(promptsDir, { recursive: true });
+
+  const commentsPath = `${promptsDir}/existing_comments.json`;
+  await writeFile(
+    commentsPath,
+    JSON.stringify({ issueComments: [], reviewComments: [] }, null, 2),
+  );
+  console.log(`Stored empty existing comments for benchmark at ${commentsPath}`);
+  return commentsPath;
+}
+
 export async function storeDescription(
   title: string,
   body: string,
@@ -149,19 +162,22 @@ export async function computeReviewArtifacts(opts: {
   title: string;
   body: string;
   githubToken?: string;
+  ignoreExistingComments?: boolean;
 }): Promise<ReviewArtifacts> {
   const [diffPath, commentsPath, descriptionPath] = await Promise.all([
     computeAndStoreDiff(opts.baseRef, opts.tempDir, {
       githubToken: opts.githubToken,
       prNumber: opts.prNumber,
     }),
-    fetchAndStoreComments(
-      opts.octokit,
-      opts.owner,
-      opts.repo,
-      opts.prNumber,
-      opts.tempDir,
-    ),
+    opts.ignoreExistingComments
+      ? storeEmptyComments(opts.tempDir)
+      : fetchAndStoreComments(
+          opts.octokit,
+          opts.owner,
+          opts.repo,
+          opts.prNumber,
+          opts.tempDir,
+        ),
     storeDescription(opts.title, opts.body, opts.tempDir),
   ]);
 

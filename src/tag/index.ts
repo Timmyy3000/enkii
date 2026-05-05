@@ -4,6 +4,7 @@
  * v0.1 trigger surface:
  *   - pull_request (opened/synchronize/reopened) → run code review automatically
  *   - @enkii /review                              → re-run code review
+ *   - @enkii /benchmark                           → fresh review ignoring prior comments
  *   - @enkii /security                            → standalone security review
  *   - @enkii help | @enkii status | @enkii        → mechanical reply (no LLM)
  *
@@ -67,8 +68,15 @@ async function hasExistingEnkiiReview(
 
 export type TagDispatchResult = {
   // "auto" = PR event default (code + optional security in parallel).
-  // "review" / "security" = explicit slash-command, runs only that one.
-  command: "auto" | "review" | "security" | "help" | "status" | "skip";
+  // "review" / "benchmark" / "security" = explicit slash-command, runs only that one.
+  command:
+    | "auto"
+    | "review"
+    | "benchmark"
+    | "security"
+    | "help"
+    | "status"
+    | "skip";
   trackingCommentId?: number;
   reason?: string;
 };
@@ -110,6 +118,12 @@ export async function prepareTagExecution({
       core.setOutput("enkii_command", "review");
       core.setOutput("enkii_comment_id", String(comment.id));
       return { command: "review", trackingCommentId: comment.id };
+    }
+    case "benchmark": {
+      const comment = await createInitialComment(octokit.rest, context, "benchmark");
+      core.setOutput("enkii_command", "benchmark");
+      core.setOutput("enkii_comment_id", String(comment.id));
+      return { command: "benchmark", trackingCommentId: comment.id };
     }
     case "security": {
       if (await hasExistingEnkiiReview(octokit, context, ENKII_SECURITY_MARKER)) {

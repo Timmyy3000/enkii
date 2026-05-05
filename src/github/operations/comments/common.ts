@@ -29,7 +29,11 @@ export function createBranchLink(
   return `\n[View branch](${branchUrl})`;
 }
 
-export type CommentType = "default" | "security" | "review_and_security";
+export type CommentType =
+  | "default"
+  | "benchmark"
+  | "security"
+  | "review_and_security";
 
 export function createCommentBody(
   jobRunLink: string,
@@ -41,6 +45,9 @@ export function createCommentBody(
   if (type === "review_and_security") {
     label = "code + security review";
     message = "Reviewing code and running a security check…";
+  } else if (type === "benchmark") {
+    label = "benchmark review";
+    message = "Running a fresh review without prior PR comments…";
   } else if (type === "security") {
     label = "security review";
     message = "Running a security check…";
