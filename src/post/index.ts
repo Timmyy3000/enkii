@@ -79,16 +79,24 @@ export async function postReviewFromValidated(args: {
   marker: string;
   inlineCap: number;
 }): Promise<PostReviewResult> {
-  const { validated, octokit, owner, repo, prNumber, marker, inlineCap } =
-    args;
+  const { validated, octokit, owner, repo, prNumber, marker, inlineCap } = args;
 
   const approved: Candidate[] = validated.results
     .filter((r) => r.status === "approved")
     .map((r) => (r.status === "approved" ? r.comment : null!))
     .filter(Boolean);
 
-  const inline = approved.slice(0, inlineCap);
+  const requestedInline = approved.slice(0, inlineCap);
   const spillover = approved.slice(inlineCap);
+  const resolvable = await splitResolvableInlineComments({
+    octokit,
+    owner,
+    repo,
+    prNumber,
+    candidates: requestedInline,
+  });
+  const inline = resolvable.inline;
+  const unresolved = resolvable.unresolved;
 
   const headSha = validated.meta.headSha;
 
@@ -102,26 +110,59 @@ export async function postReviewFromValidated(args: {
     totalApproved: approved.length,
     inlinePosted: inline.length,
     spillover,
+    unresolved,
     kind,
   });
 
   const inlineComments = inline.map(toGitHubReviewComment);
 
   // Submit the review. Event = COMMENT (we don't approve or request changes).
-  const review = await octokit.rest.pulls.createReview({
-    owner,
-    repo,
-    pull_number: prNumber,
-    commit_id: headSha,
-    event: "COMMENT",
-    body: summaryBody,
-    comments: inlineComments,
-  });
+  let review;
+  let inlinePosted = 0;
+  try {
+    review = await octokit.rest.pulls.createReview({
+      owner,
+      repo,
+      pull_number: prNumber,
+      commit_id: headSha,
+      event: "COMMENT",
+      body: summaryBody,
+      comments: inlineComments,
+    });
+    inlinePosted = inline.length;
+  } catch (error) {
+    if (!isLineResolutionError(error) || inlineComments.length === 0) {
+      throw error;
+    }
+
+    console.warn(
+      "enkii: GitHub rejected inline anchors; retrying review as summary-only.",
+    );
+    review = await octokit.rest.pulls.createReview({
+      owner,
+      repo,
+      pull_number: prNumber,
+      commit_id: headSha,
+      event: "COMMENT",
+      body: buildSummaryBody({
+        marker,
+        summary: validated.reviewSummary?.body,
+        approved,
+        totalApproved: approved.length,
+        inlinePosted: 0,
+        spillover,
+        unresolved: [...unresolved, ...inline],
+        kind,
+      }),
+      comments: [],
+    });
+    inlinePosted = 0;
+  }
 
   return {
     reviewId: review.data.id,
-    inlinePosted: inline.length,
-    summarized: spillover.length,
+    inlinePosted,
+    summarized: approved.length - inlinePosted,
     totalApproved: approved.length,
   };
 }
@@ -172,10 +213,18 @@ function buildSummaryBody(args: {
   totalApproved: number;
   inlinePosted: number;
   spillover: Candidate[];
+  unresolved?: Candidate[];
   kind?: "code" | "security";
 }): string {
-  const { marker, summary, approved, totalApproved, spillover, kind = "code" } =
-    args;
+  const {
+    marker,
+    summary,
+    approved,
+    totalApproved,
+    spillover,
+    unresolved = [],
+    kind = "code",
+  } = args;
   const parts: string[] = [marker, brandedHeader(kind)];
   const incompleteReview = isIncompleteReview(summary);
   const score = computeMergeabilityScore({
@@ -210,7 +259,109 @@ function buildSummaryBody(args: {
     }
   }
 
+  if (unresolved.length > 0) {
+    parts.push("");
+    parts.push(`### Unanchored notes (${unresolved.length})`);
+    parts.push(
+      "GitHub could not resolve these findings to changed diff lines, so enkii is preserving them in the summary instead of failing the review.",
+    );
+    for (const c of unresolved) {
+      parts.push(
+        `- **\`${c.path}:${c.line}\`** — ${formatReviewCommentTitle(c)}`,
+      );
+    }
+  }
+
   return parts.join("\n\n");
+}
+
+type PullFile = {
+  filename: string;
+  patch?: string | null;
+};
+
+async function splitResolvableInlineComments(args: {
+  octokit: Octokit;
+  owner: string;
+  repo: string;
+  prNumber: number;
+  candidates: Candidate[];
+}): Promise<{ inline: Candidate[]; unresolved: Candidate[] }> {
+  const { octokit, owner, repo, prNumber, candidates } = args;
+  if (candidates.length === 0) return { inline: [], unresolved: [] };
+
+  const files = (await octokit.paginate(octokit.rest.pulls.listFiles, {
+    owner,
+    repo,
+    pull_number: prNumber,
+    per_page: 100,
+  })) as PullFile[];
+  const lineMap = new Map(
+    files.map((file) => [file.filename, parseResolvablePatchLines(file.patch)]),
+  );
+
+  const inline: Candidate[] = [];
+  const unresolved: Candidate[] = [];
+  for (const candidate of candidates) {
+    if (isResolvableCandidate(candidate, lineMap.get(candidate.path))) {
+      inline.push(candidate);
+    } else {
+      unresolved.push(candidate);
+      console.warn(
+        `enkii: summarizing unresolved inline anchor ${candidate.path}:${candidate.line}`,
+      );
+    }
+  }
+  return { inline, unresolved };
+}
+
+type ResolvableLines = {
+  LEFT: Set<number>;
+  RIGHT: Set<number>;
+};
+
+function parseResolvablePatchLines(patch?: string | null): ResolvableLines {
+  const lines: ResolvableLines = { LEFT: new Set(), RIGHT: new Set() };
+  if (!patch) return lines;
+
+  let leftLine = 0;
+  let rightLine = 0;
+  for (const rawLine of patch.split("\n")) {
+    const hunk = rawLine.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunk) {
+      leftLine = Number(hunk[1]);
+      rightLine = Number(hunk[2]);
+      continue;
+    }
+
+    if (rawLine.startsWith("+")) {
+      lines.RIGHT.add(rightLine);
+      rightLine++;
+    } else if (rawLine.startsWith("-")) {
+      lines.LEFT.add(leftLine);
+      leftLine++;
+    } else if (rawLine.startsWith(" ")) {
+      lines.LEFT.add(leftLine);
+      lines.RIGHT.add(rightLine);
+      leftLine++;
+      rightLine++;
+    }
+  }
+  return lines;
+}
+
+function isResolvableCandidate(
+  candidate: Candidate,
+  lines: ResolvableLines | undefined,
+): boolean {
+  if (!lines) return false;
+  const side = candidate.side ?? "RIGHT";
+  const validLines = lines[side];
+  if (!validLines.has(candidate.line)) return false;
+  if (candidate.startLine == null || candidate.startLine === candidate.line) {
+    return true;
+  }
+  return validLines.has(candidate.startLine);
 }
 
 type Severity = "P0" | "P1" | "P2" | "nit";
@@ -250,13 +401,11 @@ function severityBadge(severity: Severity): string {
   return `![${severity}](https://img.shields.io/badge/${severity}-${color[severity]}?style=flat-square)`;
 }
 
-function computeMergeabilityScore(
-  args: {
-    approved: Candidate[];
-    totalApproved: number;
-    incompleteReview: boolean;
-  },
-): number {
+function computeMergeabilityScore(args: {
+  approved: Candidate[];
+  totalApproved: number;
+  incompleteReview: boolean;
+}): number {
   const { approved, totalApproved, incompleteReview } = args;
   if (incompleteReview) return 1;
   if (totalApproved === 0) return 5;
@@ -293,4 +442,11 @@ function isIncompleteReview(summary?: string): boolean {
   return /unable to complete|cannot complete|could not inspect|cannot inspect|manual review required|diff(?: file)? .*too large|without access to .*diff|could not be inspected/i.test(
     summary,
   );
+}
+
+function isLineResolutionError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const maybeStatus = "status" in error ? error.status : undefined;
+  if (maybeStatus !== 422) return false;
+  return /line could not be resolved/i.test(error.message);
 }

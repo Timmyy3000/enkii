@@ -20,6 +20,7 @@
 ## Patterns That Don't Work
 - Assuming user-provided plan paths are relative to the current repo root without checking.
 - An invalid/stale OpenRouter key presents as `401 User not found`; verify with `/api/v1/auth/key` before debugging Pi/tool code.
+- Posting a batched GitHub PR review with even one unresolved inline line makes the whole `createReview` request fail with 422. Check anchors against `pulls.listFiles().patch`, summarize unresolved findings, and keep a summary-only retry.
 
 ## Domain Notes
 - Current workspace root is `E:\Users\Oluwatimilehin\Documents\DocSyde\Codebase\main\enkii`.

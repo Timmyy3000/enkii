@@ -2,6 +2,14 @@
 
 All notable changes to enkii will be documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning follows [SemVer](https://semver.org/).
 
+## [0.1.0-alpha.5] — 2026-05-05
+
+### Fixed
+
+- Prevented GitHub `422 Line could not be resolved` failures from invalid inline anchors by checking candidate comments against the PR patch before posting.
+- Comments that cannot be anchored to changed diff lines are now preserved under an `Unanchored notes` section in the review summary.
+- Added a summary-only retry when GitHub still rejects inline review comments for line-resolution reasons.
+
 ## [0.1.0-alpha.4] — 2026-05-05
 
 ### Changed
@@ -80,6 +88,7 @@ First end-to-end alpha. Code-complete on the v0.1 plan; not yet validated agains
 - 18 commits in the v0.1.0-alpha.1 stack on `main`. Repo published at https://github.com/Timmyy3000/enkii.
 - `bun run typecheck` passes.
 
+[0.1.0-alpha.5]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.0-alpha.5
 [0.1.0-alpha.4]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.0-alpha.4
 [0.1.0-alpha.3]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.0-alpha.2
