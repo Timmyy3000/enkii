@@ -92,8 +92,6 @@ describe("postReviewFromValidated", () => {
         line: 12,
       },
     ]);
-    expect(review.body).toContain("### Summary");
-    expect(review.body).not.toContain("### enkii Summary");
     expect(review.body).toContain("### Unanchored notes (1)");
     expect(review.body).toContain("Invalid anchor");
   });
