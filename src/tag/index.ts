@@ -66,7 +66,9 @@ async function hasExistingEnkiiReview(
 }
 
 export type TagDispatchResult = {
-  command: "review" | "security" | "help" | "status" | "skip";
+  // "auto" = PR event default (code + optional security in parallel).
+  // "review" / "security" = explicit slash-command, runs only that one.
+  command: "auto" | "review" | "security" | "help" | "status" | "skip";
   trackingCommentId?: number;
   reason?: string;
 };
@@ -89,16 +91,16 @@ export async function prepareTagExecution({
 
   const commandContext = extractCommandFromContext(context);
 
-  // PR event with no slash command → automatic code review.
+  // PR event with no slash command → automatic review (code + security in parallel
+  // when run_security input is on, code only otherwise). Resolved downstream.
   if (context.eventName === "pull_request" && context.isPR) {
     if (await hasExistingEnkiiReview(octokit, context, ENKII_REVIEW_MARKER)) {
-      // For now we still re-run; later phases may add SHA-aware skip.
       console.log("enkii: prior code review found on this PR; running again on the new HEAD.");
     }
     const comment = await createInitialComment(octokit.rest, context, "default");
-    core.setOutput("enkii_command", "review");
+    core.setOutput("enkii_command", "auto");
     core.setOutput("enkii_comment_id", String(comment.id));
-    return { command: "review", trackingCommentId: comment.id };
+    return { command: "auto", trackingCommentId: comment.id };
   }
 
   // Slash-command paths (issue_comment / review_comment / review).

@@ -1,18 +1,15 @@
 /**
- * Two-pass review orchestrator. Used for both code review (`@enkii /review`,
- * pull_request) and security review (`@enkii /security`).
+ * Review orchestrator. Used for both code review and security review.
  *
- * The flow is identical for both kinds:
- *   1. Write JSON Schemas to disk so Codex can constrain its output.
- *   2. Pass 1 — Codex generates candidate findings via the kind-specific
- *      Pass 1 prompt + the loaded skill content.
- *   3. Extract + zod-validate the candidates JSON, write to disk.
- *   4. Pass 2 — Codex re-verifies each candidate against source via the
- *      validator prompt + the same skill content.
- *   5. Extract + zod-validate the validated JSON, write to disk.
+ * Single-pass mode (default): Pass 1 produces post-ready candidates; we
+ * synthesize a validated.json by approving everything and the post step runs
+ * unchanged. Halves wall time vs two-pass.
  *
- * Output paths differ per kind so code + security runs don't collide on
- * disk if both fire on the same PR.
+ * Two-pass mode (`enableValidator`): Pass 1 → validator Pass 2 re-checks each
+ * candidate. Higher quality, ~2× latency.
+ *
+ * Output paths differ per kind so concurrent code + security runs don't
+ * collide on disk.
  */
 
 import { writeFile, readFile, mkdir } from "fs/promises";
@@ -42,6 +39,8 @@ export type RunReviewOptions = {
   model: string;
   /** Where to write candidates.json + validated.json + schema files. */
   promptsDir: string;
+  /** When true, run Pass 2 validator. When false, post Pass 1 directly. */
+  enableValidator?: boolean;
 };
 
 export type RunReviewResult = {
@@ -55,7 +54,14 @@ export type RunReviewResult = {
 export async function runReview(
   options: RunReviewOptions,
 ): Promise<RunReviewResult> {
-  const { kind, preparedContext, workingDir, model, promptsDir } = options;
+  const {
+    kind,
+    preparedContext,
+    workingDir,
+    model,
+    promptsDir,
+    enableValidator = false,
+  } = options;
 
   await mkdir(promptsDir, { recursive: true });
 
@@ -83,12 +89,13 @@ export async function runReview(
     candidatesSchemaPath,
     JSON.stringify(CANDIDATES_OUTPUT_SCHEMA, null, 2),
   );
-  await writeFile(
-    validatedSchemaPath,
-    JSON.stringify(VALIDATED_OUTPUT_SCHEMA, null, 2),
-  );
+  if (enableValidator) {
+    await writeFile(
+      validatedSchemaPath,
+      JSON.stringify(VALIDATED_OUTPUT_SCHEMA, null, 2),
+    );
+  }
 
-  // Pass 1 — candidates
   console.log(`enkii: starting ${kind} Pass 1 (candidates)...`);
   const pass1Prompt =
     kind === "security"
@@ -119,41 +126,49 @@ export async function runReview(
     `enkii: ${kind} Pass 1 produced ${candidates.comments.length} candidates → ${candidatesPath}`,
   );
 
-  // Pass 2 — validator. The validator prompt template reads paths from these
-  // env vars, so we point them at the kind-specific files before invoking.
-  console.log(`enkii: starting ${kind} Pass 2 (validator)...`);
-  process.env.REVIEW_CANDIDATES_PATH = candidatesPath;
-  process.env.REVIEW_VALIDATED_PATH = validatedPath;
-  const pass2Prompt = generateReviewValidatorPrompt(preparedContext);
+  let validated: ValidatedPass;
 
-  const pass2 = await runCodex({
-    prompt: pass2Prompt,
-    model,
-    workingDir,
-    outputFile: validatedOutFile,
-    outputSchemaPath: validatedSchemaPath,
-  });
+  if (enableValidator) {
+    console.log(`enkii: starting ${kind} Pass 2 (validator)...`);
+    process.env.REVIEW_CANDIDATES_PATH = candidatesPath;
+    process.env.REVIEW_VALIDATED_PATH = validatedPath;
+    const pass2Prompt = generateReviewValidatorPrompt(preparedContext);
 
-  console.log(
-    `enkii: ${kind} Pass 2 finished in ${(pass2.durationMs / 1000).toFixed(1)}s`,
-  );
+    const pass2 = await runCodex({
+      prompt: pass2Prompt,
+      model,
+      workingDir,
+      outputFile: validatedOutFile,
+      outputSchemaPath: validatedSchemaPath,
+    });
 
-  const validated = await loadPassOutput(
-    `${kind} Pass 2`,
-    validatedPath,
-    pass2.finalMessage,
-    ValidatedPassSchema,
-    kind,
-  );
-  await writeFile(validatedPath, JSON.stringify(validated, null, 2));
+    console.log(
+      `enkii: ${kind} Pass 2 finished in ${(pass2.durationMs / 1000).toFixed(1)}s`,
+    );
 
-  const approvedCount = validated.results.filter(
-    (r) => r.status === "approved",
-  ).length;
-  const rejectedCount = validated.results.length - approvedCount;
-  console.log(
-    `enkii: ${kind} Pass 2 → ${approvedCount} approved, ${rejectedCount} rejected → ${validatedPath}`,
-  );
+    validated = await loadPassOutput(
+      `${kind} Pass 2`,
+      validatedPath,
+      pass2.finalMessage,
+      ValidatedPassSchema,
+      kind,
+    );
+    await writeFile(validatedPath, JSON.stringify(validated, null, 2));
+
+    const approvedCount = validated.results.filter(
+      (r) => r.status === "approved",
+    ).length;
+    const rejectedCount = validated.results.length - approvedCount;
+    console.log(
+      `enkii: ${kind} Pass 2 → ${approvedCount} approved, ${rejectedCount} rejected → ${validatedPath}`,
+    );
+  } else {
+    validated = synthesizeValidatedFromCandidates(candidates);
+    await writeFile(validatedPath, JSON.stringify(validated, null, 2));
+    console.log(
+      `enkii: ${kind} single-pass → ${validated.results.length} comments → ${validatedPath}`,
+    );
+  }
 
   return {
     kind,
@@ -161,6 +176,31 @@ export async function runReview(
     validatedPath,
     candidates,
     validated,
+  };
+}
+
+function synthesizeValidatedFromCandidates(
+  candidates: CandidatesPass,
+): ValidatedPass {
+  return {
+    version: 1,
+    meta: {
+      repo: candidates.meta.repo,
+      prNumber: candidates.meta.prNumber,
+      headSha: candidates.meta.headSha,
+      baseRef: candidates.meta.baseRef,
+      validatedAt: new Date().toISOString(),
+    },
+    results: candidates.comments.map((c) => ({
+      status: "approved" as const,
+      comment: c,
+    })),
+    reviewSummary: candidates.reviewSummary
+      ? {
+          status: "approved" as const,
+          body: candidates.reviewSummary.body,
+        }
+      : undefined,
   };
 }
 
@@ -205,6 +245,7 @@ export async function runCodeReview(args: {
   workingDir: string;
   reviewModel: string;
   promptsDir: string;
+  enableValidator?: boolean;
 }): Promise<RunReviewResult> {
   return runReview({
     kind: "code",
@@ -212,6 +253,7 @@ export async function runCodeReview(args: {
     workingDir: args.workingDir,
     model: args.reviewModel,
     promptsDir: args.promptsDir,
+    enableValidator: args.enableValidator,
   });
 }
 
@@ -220,6 +262,7 @@ export async function runSecurityReview(args: {
   workingDir: string;
   securityModel: string;
   promptsDir: string;
+  enableValidator?: boolean;
 }): Promise<RunReviewResult> {
   return runReview({
     kind: "security",
@@ -227,5 +270,6 @@ export async function runSecurityReview(args: {
     workingDir: args.workingDir,
     model: args.securityModel,
     promptsDir: args.promptsDir,
+    enableValidator: args.enableValidator,
   });
 }

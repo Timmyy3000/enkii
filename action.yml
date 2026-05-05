@@ -28,17 +28,25 @@ inputs:
     description: "Path to a custom security review skill markdown file (relative to repo root). Empty = use bundled default."
     required: false
     default: ""
+  enable_validator:
+    description: "Run a Pass 2 validator after the candidate pass. Higher quality, ~2× latency. Default: false (single-pass)."
+    required: false
+    default: "false"
+  run_security:
+    description: "On automatic PR events, run the security review alongside the code review (in parallel). Set 'false' to require explicit @enkii /security. Default: true."
+    required: false
+    default: "true"
 
 outputs:
   contains_trigger:
     description: "Whether the event matched an enkii trigger (true/false)"
-    value: ${{ steps.prepare.outputs.contains_trigger }}
-  enkii_command:
-    description: "The dispatched command (review/security/help/status/skip)"
-    value: ${{ steps.prepare.outputs.enkii_command }}
-  enkii_comment_id:
-    description: "ID of the tracking comment, when one was created"
-    value: ${{ steps.prepare.outputs.enkii_comment_id }}
+    value: ${{ steps.enkii.outputs.contains_trigger }}
+  code_review_id:
+    description: "ID of the code review submitted to GitHub, when one was posted"
+    value: ${{ steps.enkii.outputs.code_review_id }}
+  security_review_id:
+    description: "ID of the security review submitted to GitHub, when one was posted"
+    value: ${{ steps.enkii.outputs.security_review_id }}
 
 runs:
   using: "composite"
@@ -69,71 +77,18 @@ runs:
         cd "${GITHUB_ACTION_PATH}"
         bun install --frozen-lockfile
 
-    - name: Prepare enkii (validate, trigger detection, dispatch)
-      id: prepare
+    - name: Run enkii
+      id: enkii
       shell: bash
       run: |
-        bun run "${GITHUB_ACTION_PATH}/src/entrypoints/prepare.ts"
+        bun run "${GITHUB_ACTION_PATH}/src/entrypoints/main.ts"
       env:
         OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
         OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token != '' && inputs.github_token || github.token }}
-        REVIEW_MODEL: ${{ inputs.review_model }}
-        SECURITY_MODEL: ${{ inputs.security_model }}
-        REVIEW_SKILL_PATH: ${{ inputs.review_skill_path }}
-        SECURITY_SKILL_PATH: ${{ inputs.security_skill_path }}
         DEFAULT_WORKFLOW_TOKEN: ${{ github.token }}
-
-    - name: Run code review (Pass 1 + Pass 2)
-      id: run_review
-      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.enkii_command == 'review'
-      shell: bash
-      run: |
-        bun run "${GITHUB_ACTION_PATH}/src/entrypoints/run-review.ts"
-      env:
-        OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
-        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token != '' && inputs.github_token || github.token }}
         REVIEW_MODEL: ${{ inputs.review_model }}
-        REVIEW_SKILL_PATH: ${{ inputs.review_skill_path }}
-
-    - name: Post code review comments
-      id: post_review
-      if: steps.run_review.outputs.validated_path != ''
-      shell: bash
-      run: |
-        bun run "${GITHUB_ACTION_PATH}/src/entrypoints/post-review.ts"
-      env:
-        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token != '' && inputs.github_token || github.token }}
-        VALIDATED_PATH: ${{ steps.run_review.outputs.validated_path }}
-        ENKII_REVIEW_KIND: code
-
-    - name: Run security review (Pass 1 + Pass 2)
-      id: run_security_review
-      if: steps.prepare.outputs.contains_trigger == 'true' && steps.prepare.outputs.enkii_command == 'security'
-      shell: bash
-      run: |
-        bun run "${GITHUB_ACTION_PATH}/src/entrypoints/run-security-review.ts"
-      env:
-        OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
-        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token != '' && inputs.github_token || github.token }}
         SECURITY_MODEL: ${{ inputs.security_model }}
+        REVIEW_SKILL_PATH: ${{ inputs.review_skill_path }}
         SECURITY_SKILL_PATH: ${{ inputs.security_skill_path }}
-
-    - name: Post security review comments
-      id: post_security_review
-      if: steps.run_security_review.outputs.validated_path != ''
-      shell: bash
-      run: |
-        bun run "${GITHUB_ACTION_PATH}/src/entrypoints/post-review.ts"
-      env:
-        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token != '' && inputs.github_token || github.token }}
-        VALIDATED_PATH: ${{ steps.run_security_review.outputs.validated_path }}
-        ENKII_REVIEW_KIND: security
-
-    - name: Reply to @enkii (help / status)
-      if: steps.prepare.outputs.contains_trigger == 'true' && (steps.prepare.outputs.enkii_command == 'help' || steps.prepare.outputs.enkii_command == 'status' || steps.prepare.outputs.enkii_command == 'default')
-      shell: bash
-      run: |
-        bun run "${GITHUB_ACTION_PATH}/src/entrypoints/post-help.ts"
-      env:
-        OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token != '' && inputs.github_token || github.token }}
-        ENKII_COMMAND: ${{ steps.prepare.outputs.enkii_command }}
+        ENABLE_VALIDATOR: ${{ inputs.enable_validator }}
+        RUN_SECURITY: ${{ inputs.run_security }}
