@@ -2,7 +2,19 @@
 
 All notable changes to enkii will be documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning follows [SemVer](https://semver.org/).
 
-## [0.1.0-alpha.2] — 2026-05-05
+## [0.1.0-alpha.4] — 2026-05-05
+
+### Changed
+
+- Switched the embedded Pi runtime to Pi's SDK read-only tools (`read`, `grep`, `find`, `ls`) via `@mariozechner/pi-coding-agent`.
+- Removed enkii's duplicate local `read_file`, `grep`, `list_files`, and path-guard tool implementations.
+- Updated review, security, benchmark, and validator prompts to use Pi's native read-only tool names and offset/limit chunking.
+
+### Fixed
+
+- Incomplete reviews that cannot inspect the PR diff now receive `Mergeability Score: 1/5` with manual-review guidance instead of being treated as safe to merge.
+
+## [0.1.0-alpha.3] — 2026-05-05
 
 ### Added
 
@@ -11,11 +23,17 @@ All notable changes to enkii will be documented here. Format follows [Keep a Cha
 
 ### Changed
 
+- Code and security reviews can run in parallel for automatic PR events.
+- Review summaries now include merge guidance while leaving the numeric score to the post step.
+
+## [0.1.0-alpha.2] — 2026-05-05
+
+### Changed
+
 - Replaced the Codex CLI runtime with embedded `@mariozechner/pi-agent-core` and `@mariozechner/pi-ai` on OpenRouter.
 - Pass 1 and Pass 2 now use submit tools (`submit_review`, `submit_validation`) for structured output instead of parsing Codex final messages.
 - Removed the GitHub Action's Node/Codex install step; setup now installs Bun dependencies and runs enkii directly.
 - Single-pass review remains the default. The Pass 2 validator remains available behind `enable_validator`.
-- Code and security reviews can run in parallel for automatic PR events.
 
 ### Removed
 
@@ -62,4 +80,7 @@ First end-to-end alpha. Code-complete on the v0.1 plan; not yet validated agains
 - 18 commits in the v0.1.0-alpha.1 stack on `main`. Repo published at https://github.com/Timmyy3000/enkii.
 - `bun run typecheck` passes.
 
+[0.1.0-alpha.4]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.0-alpha.4
+[0.1.0-alpha.3]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.0-alpha.3
+[0.1.0-alpha.2]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.0-alpha.1
