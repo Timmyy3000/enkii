@@ -2,6 +2,12 @@
 
 All notable changes to enkii will be documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning follows [SemVer](https://semver.org/).
 
+## [0.1.0-alpha.7] — 2026-05-05
+
+### Changed
+
+- Review body headings now use `Summary` instead of `enkii Summary`.
+
 ## [0.1.0-alpha.6] — 2026-05-05
 
 ### Fixed
@@ -96,6 +102,7 @@ First end-to-end alpha. Code-complete on the v0.1 plan; not yet validated agains
 - 18 commits in the v0.1.0-alpha.1 stack on `main`. Repo published at https://github.com/Timmyy3000/enkii.
 - `bun run typecheck` passes.
 
+[0.1.0-alpha.7]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.0-alpha.7
 [0.1.0-alpha.6]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.0-alpha.6
 [0.1.0-alpha.5]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.0-alpha.5
 [0.1.0-alpha.4]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.0-alpha.4

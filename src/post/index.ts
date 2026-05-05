@@ -234,13 +234,13 @@ function buildSummaryBody(args: {
   });
 
   if (summary) {
-    parts.push("### enkii Summary");
+    parts.push("### Summary");
     parts.push(summary.trim());
   } else if (totalApproved === 0) {
-    parts.push("### enkii Summary");
+    parts.push("### Summary");
     parts.push("Reviewed this PR and found no issues to flag.");
   } else {
-    parts.push("### enkii Summary");
+    parts.push("### Summary");
     parts.push(`Reviewed this PR and posted ${totalApproved} comments.`);
   }
 
