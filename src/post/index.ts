@@ -121,23 +121,24 @@ export async function postReviewFromValidated(args: {
   let review;
   let inlinePosted = 0;
   try {
-    review = await octokit.rest.pulls.createReview({
+    review = await createReviewWithRetry({
+      octokit,
       owner,
       repo,
-      pull_number: prNumber,
-      commit_id: headSha,
+      prNumber,
+      headSha,
       event: "COMMENT",
       body: summaryBody,
       comments: inlineComments,
     });
     inlinePosted = inline.length;
   } catch (error) {
-    if (!isLineResolutionError(error) || inlineComments.length === 0) {
+    if (!isRetriableInlineReviewError(error) || inlineComments.length === 0) {
       throw error;
     }
 
     console.warn(
-      "enkii: GitHub rejected inline anchors; retrying review as summary-only.",
+      `enkii: GitHub rejected inline review comments; retrying review as summary-only. reason=${getErrorMessage(error)}`,
     );
     console.warn(
       `enkii: inline anchor rejection details: requested=${inlineComments.length}, unresolved_precheck=${unresolved.length}, error=${error instanceof Error ? error.message : String(error)}`,
@@ -147,11 +148,12 @@ export async function postReviewFromValidated(args: {
         `enkii: rejected inline candidate ${candidate.path}:${candidate.line} side=${candidate.side ?? "RIGHT"} startLine=${candidate.startLine ?? "null"}`,
       );
     }
-    review = await octokit.rest.pulls.createReview({
+    review = await createReviewWithRetry({
+      octokit,
       owner,
       repo,
-      pull_number: prNumber,
-      commit_id: headSha,
+      prNumber,
+      headSha,
       event: "COMMENT",
       body: buildSummaryBody({
         marker,
@@ -174,6 +176,45 @@ export async function postReviewFromValidated(args: {
     summarized: approved.length - inlinePosted,
     totalApproved: approved.length,
   };
+}
+
+async function createReviewWithRetry(args: {
+  octokit: Octokit;
+  owner: string;
+  repo: string;
+  prNumber: number;
+  headSha: string;
+  event: "COMMENT";
+  body: string;
+  comments: ReturnType<typeof toGitHubReviewComment>[];
+}) {
+  const maxAttempts = 2;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await args.octokit.rest.pulls.createReview({
+        owner: args.owner,
+        repo: args.repo,
+        pull_number: args.prNumber,
+        commit_id: args.headSha,
+        event: args.event,
+        body: args.body,
+        comments: args.comments,
+      });
+    } catch (error) {
+      lastError = error;
+      if (!isRetriableGitHubReviewError(error) || attempt >= maxAttempts) {
+        throw error;
+      }
+      console.warn(
+        `enkii: GitHub createReview failed with retryable error; retrying (${attempt}/${maxAttempts}). error=${getErrorMessage(error)}`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+  }
+
+  throw lastError;
 }
 
 function toGitHubReviewComment(c: Candidate) {
@@ -523,4 +564,23 @@ function isLineResolutionError(error: unknown): boolean {
   const maybeStatus = "status" in error ? error.status : undefined;
   if (maybeStatus !== 422) return false;
   return /line could not be resolved/i.test(error.message);
+}
+
+function isGitHubInternalReviewError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const maybeStatus = "status" in error ? error.status : undefined;
+  if (maybeStatus !== 422) return false;
+  return /internal error occurred/i.test(error.message);
+}
+
+function isRetriableGitHubReviewError(error: unknown): boolean {
+  return isGitHubInternalReviewError(error);
+}
+
+function isRetriableInlineReviewError(error: unknown): boolean {
+  return isLineResolutionError(error) || isGitHubInternalReviewError(error);
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
