@@ -17,7 +17,7 @@ import { dirname, join } from "path";
 import { createReadOnlyTools } from "@mariozechner/pi-coding-agent";
 import { Type } from "@mariozechner/pi-ai";
 import type { infer as zInfer, ZodTypeAny } from "zod";
-import { runAgent } from "../../runtime/run-agent";
+import { runAgent, type RunAgentResult } from "../../runtime/run-agent";
 import {
   createSubmitCandidatesTool,
   createSubmitValidatedTool,
@@ -52,7 +52,14 @@ export type RunReviewResult = {
   validatedPath: string;
   candidates: CandidatesPass;
   validated: ValidatedPass;
+  pass1: ReviewPassMetrics;
+  pass2?: ReviewPassMetrics;
 };
+
+export type ReviewPassMetrics = Pick<
+  RunAgentResult<unknown>,
+  "durationMs" | "toolCallCount" | "usage"
+>;
 
 export async function runReview(
   options: RunReviewOptions,
@@ -92,6 +99,7 @@ export async function runReview(
     ],
     outputToolName: "submit_review",
     getOutput: () => candidatesOutput,
+    logPrefix: kind,
   });
 
   console.log(
@@ -110,6 +118,7 @@ export async function runReview(
   );
 
   let validated: ValidatedPass;
+  let pass2Metrics: ReviewPassMetrics | undefined;
 
   if (enableValidator) {
     console.log(`enkii: starting ${kind} Pass 2 (validator)...`);
@@ -131,7 +140,9 @@ export async function runReview(
       ],
       outputToolName: "submit_validation",
       getOutput: () => validatedOutput,
+      logPrefix: `${kind}:validator`,
     });
+    pass2Metrics = pass2;
 
     console.log(
       `enkii: ${kind} Pass 2 finished in ${(pass2.durationMs / 1000).toFixed(1)}s`,
@@ -166,6 +177,8 @@ export async function runReview(
     validatedPath,
     candidates,
     validated,
+    pass1,
+    pass2: pass2Metrics,
   };
 }
 

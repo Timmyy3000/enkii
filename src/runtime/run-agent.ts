@@ -13,6 +13,7 @@ export type RunAgentOptions<T> = {
   outputToolName: string;
   getOutput: () => T | undefined;
   timeoutMs?: number;
+  logPrefix?: string;
 };
 
 export type RunAgentResult<T> = {
@@ -147,8 +148,9 @@ export async function runAgent<T>(
           totalUsage,
         );
       }
+      const prefix = options.logPrefix ? `:${options.logPrefix}` : "";
       console.warn(
-        `enkii: transient provider failure, retrying agent run (${attempt}/${maxAttempts})`,
+        `enkii${prefix}: transient provider failure, retrying agent run (${attempt}/${maxAttempts})`,
       );
     }
   }
@@ -173,6 +175,7 @@ async function runAgentAttempt<T>(
   let toolCallCount = 0;
   let errorMessage: string | undefined;
   const usage = emptyUsage();
+  const prefix = options.logPrefix ? `:${options.logPrefix}` : "";
 
   const agent = new Agent({
     initialState: {
@@ -189,11 +192,11 @@ async function runAgentAttempt<T>(
   agent.subscribe((event: AgentEvent) => {
     if (event.type === "tool_execution_start") {
       toolCallCount++;
-      console.log(`enkii: tool start ${event.toolName}`);
+      console.log(`enkii${prefix}: tool start ${event.toolName}`);
     }
     if (event.type === "tool_execution_end") {
       console.log(
-        `enkii: tool end ${event.toolName}${event.isError ? " (error)" : ""}`,
+        `enkii${prefix}: tool end ${event.toolName}${event.isError ? " (error)" : ""}`,
       );
     }
     if (event.type === "message_end" && event.message.role === "assistant") {
