@@ -192,12 +192,9 @@ function toGitHubReviewComment(c: Candidate) {
     side: c.side ?? "RIGHT",
     line: c.line,
   };
-  if (
-    c.startLine != null &&
-    c.startLine !== undefined &&
-    c.startLine !== c.line
-  ) {
-    base.start_line = c.startLine;
+  const normalizedStartLine = normalizeStartLine(c.startLine);
+  if (normalizedStartLine != null && normalizedStartLine !== c.line) {
+    base.start_line = normalizedStartLine;
     base.start_side = c.side ?? "RIGHT";
   }
   return base;
@@ -389,10 +386,11 @@ function isResolvableCandidate(
   const side = candidate.side ?? "RIGHT";
   const validLines = lines[side];
   if (!validLines.has(candidate.line)) return false;
-  if (candidate.startLine == null || candidate.startLine === candidate.line) {
+  const normalizedStartLine = normalizeStartLine(candidate.startLine);
+  if (normalizedStartLine == null || normalizedStartLine === candidate.line) {
     return true;
   }
-  return validLines.has(candidate.startLine);
+  return validLines.has(normalizedStartLine);
 }
 
 function describeAnchorMismatch(
@@ -407,13 +405,21 @@ function describeAnchorMismatch(
   if (!validLines.has(candidate.line)) {
     return `line_${candidate.line}_missing_on_${side}_side (min=${minLine(validLines)}, max=${maxLine(validLines)}, count=${validLines.size})`;
   }
-  if (candidate.startLine == null || candidate.startLine === candidate.line) {
+  const normalizedStartLine = normalizeStartLine(candidate.startLine);
+  if (normalizedStartLine == null || normalizedStartLine === candidate.line) {
     return "unknown_mismatch";
   }
-  if (!validLines.has(candidate.startLine)) {
-    return `start_line_${candidate.startLine}_missing_on_${side}_side (min=${minLine(validLines)}, max=${maxLine(validLines)}, count=${validLines.size})`;
+  if (!validLines.has(normalizedStartLine)) {
+    return `start_line_${normalizedStartLine}_missing_on_${side}_side (min=${minLine(validLines)}, max=${maxLine(validLines)}, count=${validLines.size})`;
   }
   return "unknown_mismatch";
+}
+
+function normalizeStartLine(
+  startLine: number | null | undefined,
+): number | null {
+  if (startLine == null) return null;
+  return startLine > 0 ? startLine : null;
 }
 
 function minLine(lines: Set<number>): number {
