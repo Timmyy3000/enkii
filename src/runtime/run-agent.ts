@@ -3,7 +3,7 @@ import {
   type AgentEvent,
   type AgentTool,
 } from "@mariozechner/pi-agent-core";
-import { getModel, type Model } from "@mariozechner/pi-ai";
+import { getModel, type Model, type Usage } from "@mariozechner/pi-ai";
 
 export type RunAgentOptions<T> = {
   systemPrompt: string;
@@ -19,15 +19,25 @@ export type RunAgentResult<T> = {
   output: T;
   durationMs: number;
   toolCallCount: number;
+  usage: Usage;
 };
 
 export class AgentRunError extends Error {
   durationMs: number;
+  toolCallCount: number;
+  usage: Usage;
 
-  constructor(message: string, durationMs: number) {
+  constructor(
+    message: string,
+    durationMs: number,
+    toolCallCount: number,
+    usage: Usage,
+  ) {
     super(message);
     this.name = "AgentRunError";
     this.durationMs = durationMs;
+    this.toolCallCount = toolCallCount;
+    this.usage = usage;
   }
 }
 
@@ -39,7 +49,43 @@ function getOpenRouterModel(modelId: string): Model<any> {
     ...base,
     id: modelId,
     name: modelId,
+    compat: {
+      ...base.compat,
+      openRouterRouting: {
+        sort: "price",
+      },
+    },
   };
+}
+
+function emptyUsage(): Usage {
+  return {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      total: 0,
+    },
+  };
+}
+
+function addUsage(total: Usage, usage: Usage): void {
+  total.input += usage.input;
+  total.output += usage.output;
+  total.cacheRead += usage.cacheRead;
+  total.cacheWrite += usage.cacheWrite;
+  total.totalTokens += usage.totalTokens;
+  total.cost.input += usage.cost.input;
+  total.cost.output += usage.cost.output;
+  total.cost.cacheRead += usage.cost.cacheRead;
+  total.cost.cacheWrite += usage.cost.cacheWrite;
+  total.cost.total += usage.cost.total;
 }
 
 function parseEnvTimeout(): number | null {
@@ -49,13 +95,84 @@ function parseEnvTimeout(): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+function parseEnvTransientRetries(): number {
+  const raw = process.env.ENKII_AGENT_TRANSIENT_RETRIES;
+  if (!raw) return 1;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 1;
+}
+
+function isTransientProviderError(errorMessage?: string): boolean {
+  if (!errorMessage) return false;
+  return /network connection lost|request was aborted|timed out|timeout|connection reset|econnreset|etimedout|temporarily unavailable/i.test(
+    errorMessage,
+  );
+}
+
 export async function runAgent<T>(
+  options: RunAgentOptions<T>,
+): Promise<RunAgentResult<T>> {
+  const transientRetries = parseEnvTransientRetries();
+  const maxAttempts = transientRetries + 1;
+  let totalDurationMs = 0;
+  let totalToolCallCount = 0;
+  const totalUsage = emptyUsage();
+
+  let lastError: AgentRunError | undefined;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const result = await runAgentAttempt(options);
+      totalDurationMs += result.durationMs;
+      totalToolCallCount += result.toolCallCount;
+      addUsage(totalUsage, result.usage);
+      return {
+        output: result.output,
+        durationMs: totalDurationMs,
+        toolCallCount: totalToolCallCount,
+        usage: totalUsage,
+      };
+    } catch (error) {
+      if (!(error instanceof AgentRunError)) throw error;
+      totalDurationMs += error.durationMs;
+      totalToolCallCount += error.toolCallCount;
+      addUsage(totalUsage, error.usage);
+      lastError = error;
+      const retryable = isTransientProviderError(error.message);
+      if (!retryable || attempt >= maxAttempts) {
+        throw new AgentRunError(
+          error.message,
+          totalDurationMs,
+          totalToolCallCount,
+          totalUsage,
+        );
+      }
+      console.warn(
+        `enkii: transient provider failure, retrying agent run (${attempt}/${maxAttempts})`,
+      );
+    }
+  }
+
+  if (lastError) {
+    throw new AgentRunError(
+      lastError.message,
+      totalDurationMs,
+      totalToolCallCount,
+      totalUsage,
+    );
+  }
+
+  throw new Error("enkii: unexpected retry loop exit");
+}
+
+async function runAgentAttempt<T>(
   options: RunAgentOptions<T>,
 ): Promise<RunAgentResult<T>> {
   const start = Date.now();
   const timeoutMs = options.timeoutMs ?? parseEnvTimeout() ?? 20 * 60 * 1000;
   let toolCallCount = 0;
   let errorMessage: string | undefined;
+  const usage = emptyUsage();
 
   const agent = new Agent({
     initialState: {
@@ -85,6 +202,7 @@ export async function runAgent<T>(
           ? event.message.errorMessage
           : undefined;
       if (messageError) errorMessage = messageError;
+      addUsage(usage, event.message.usage);
     }
   });
 
@@ -106,8 +224,10 @@ export async function runAgent<T>(
       `enkii: agent did not call ${options.outputToolName}.` +
         (errorMessage ? ` Provider error: ${errorMessage}` : ""),
       durationMs,
+      toolCallCount,
+      usage,
     );
   }
 
-  return { output, durationMs, toolCallCount };
+  return { output, durationMs, toolCallCount, usage };
 }
