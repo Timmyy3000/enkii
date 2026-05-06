@@ -13,6 +13,7 @@
  */
 
 import { readFile } from "fs/promises";
+import { basename } from "path";
 import type { Octokit } from "@octokit/rest";
 import {
   ValidatedPassSchema,
@@ -138,6 +139,14 @@ export async function postReviewFromValidated(args: {
     console.warn(
       "enkii: GitHub rejected inline anchors; retrying review as summary-only.",
     );
+    console.warn(
+      `enkii: inline anchor rejection details: requested=${inlineComments.length}, unresolved_precheck=${unresolved.length}, error=${error instanceof Error ? error.message : String(error)}`,
+    );
+    for (const candidate of inline) {
+      console.warn(
+        `enkii: rejected inline candidate ${candidate.path}:${candidate.line} side=${candidate.side ?? "RIGHT"} startLine=${candidate.startLine ?? "null"}`,
+      );
+    }
     review = await octokit.rest.pulls.createReview({
       owner,
       repo,
@@ -296,22 +305,44 @@ async function splitResolvableInlineComments(args: {
     pull_number: prNumber,
     per_page: 100,
   })) as PullFile[];
+  console.log(
+    `enkii: fetched ${files.length} changed files for anchor resolution on PR #${prNumber}`,
+  );
   const lineMap = new Map(
     files.map((file) => [file.filename, parseResolvablePatchLines(file.patch)]),
   );
 
   const inline: Candidate[] = [];
   const unresolved: Candidate[] = [];
+  const availablePaths = new Set(files.map((f) => f.filename));
   for (const candidate of candidates) {
-    if (isResolvableCandidate(candidate, lineMap.get(candidate.path))) {
+    const lines = lineMap.get(candidate.path);
+    if (isResolvableCandidate(candidate, lines)) {
       inline.push(candidate);
     } else {
       unresolved.push(candidate);
+      const pathExists = availablePaths.has(candidate.path);
+      const side = candidate.side ?? "RIGHT";
+      const details = describeAnchorMismatch(candidate, lines);
       console.warn(
-        `enkii: summarizing unresolved inline anchor ${candidate.path}:${candidate.line}`,
+        `enkii: summarizing unresolved inline anchor ${candidate.path}:${candidate.line} side=${side} startLine=${candidate.startLine ?? "null"} pathInDiff=${pathExists} reason=${details}`,
       );
+      if (!pathExists) {
+        const sameBasename = files
+          .filter((f) => basename(f.filename) === basename(candidate.path))
+          .slice(0, 3)
+          .map((f) => f.filename);
+        if (sameBasename.length > 0) {
+          console.warn(
+            `enkii: candidate path basename matches changed files: ${sameBasename.join(", ")}`,
+          );
+        }
+      }
     }
   }
+  console.log(
+    `enkii: anchor resolution summary: requested=${candidates.length}, inline=${inline.length}, unresolved=${unresolved.length}`,
+  );
   return { inline, unresolved };
 }
 
@@ -362,6 +393,43 @@ function isResolvableCandidate(
     return true;
   }
   return validLines.has(candidate.startLine);
+}
+
+function describeAnchorMismatch(
+  candidate: Candidate,
+  lines: ResolvableLines | undefined,
+): string {
+  if (!lines) return "path_not_found_in_changed_files";
+  const side = candidate.side ?? "RIGHT";
+  const validLines = lines[side];
+  if (validLines.size === 0)
+    return `side_${side.toLowerCase()}_has_no_patch_lines`;
+  if (!validLines.has(candidate.line)) {
+    return `line_${candidate.line}_missing_on_${side}_side (min=${minLine(validLines)}, max=${maxLine(validLines)}, count=${validLines.size})`;
+  }
+  if (candidate.startLine == null || candidate.startLine === candidate.line) {
+    return "unknown_mismatch";
+  }
+  if (!validLines.has(candidate.startLine)) {
+    return `start_line_${candidate.startLine}_missing_on_${side}_side (min=${minLine(validLines)}, max=${maxLine(validLines)}, count=${validLines.size})`;
+  }
+  return "unknown_mismatch";
+}
+
+function minLine(lines: Set<number>): number {
+  let min = Number.POSITIVE_INFINITY;
+  for (const n of lines) {
+    if (n < min) min = n;
+  }
+  return Number.isFinite(min) ? min : -1;
+}
+
+function maxLine(lines: Set<number>): number {
+  let max = Number.NEGATIVE_INFINITY;
+  for (const n of lines) {
+    if (n > max) max = n;
+  }
+  return Number.isFinite(max) ? max : -1;
 }
 
 type Severity = "P0" | "P1" | "P2" | "nit";
