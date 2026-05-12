@@ -74,7 +74,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run enkii
-        uses: Timmyy3000/enkii@main
+        uses: Timmyy3000/enkii@v0.1.0-alpha.8
         with:
           openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
 ```
@@ -114,12 +114,20 @@ You can skip presets and set model IDs directly:
 
 ```yaml
 - name: Run enkii
-  uses: Timmyy3000/enkii@main
+  uses: Timmyy3000/enkii@v0.1.0-alpha.8
   with:
     openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
     review_model: deepseek/deepseek-chat-v4.1
     security_model: deepseek/deepseek-chat-v4.1
 ```
+
+## Compatibility matrix
+
+- Runtime: Bun `1.2.11`
+- GitHub events: `pull_request`, `issue_comment`, `pull_request_review_comment`
+- Trigger commands: `@enkii /review`, `@enkii /security`, `@enkii /benchmark`, `@enkii help`, `@enkii status`
+- Repository type: private or public repos on GitHub
+- Fork PR behavior: custom skill files from fork heads are blocked for safety; bundled defaults are used instead
 
 ## Action inputs
 
@@ -179,6 +187,42 @@ If you’re asking an AI agent to set up enkii in a repository, give it this che
 
 - enkii now updates its tracking comment when a run fails, instead of silently leaving a dangling “working…” state.
 - If inline anchors fail, enkii preserves findings in summary notes rather than dropping the entire review.
+- Avoid `pull_request_review: submitted` with `cancel-in-progress: true` in the same workflow, or runs can self-cancel when enkii submits its own review.
+
+## Troubleshooting
+
+### `OPENROUTER_API_KEY` missing
+
+Error example: `enkii could not find OPENROUTER_API_KEY`
+
+Fix:
+1. Go to **Settings → Secrets and variables → Actions**
+2. Add repository secret `OPENROUTER_API_KEY`
+3. Re-run the failed workflow job
+
+### Runs are unexpectedly canceled
+
+If you see canceled `enkii review` jobs, remove `pull_request_review: submitted` from your workflow triggers when using `cancel-in-progress: true`.
+
+### Permissions errors when posting comments/reviews
+
+Ensure workflow permissions include:
+- `pull-requests: write`
+- `issues: write`
+- `contents: read`
+
+## Versioning
+
+- Releases and changes are tracked in [CHANGELOG.md](CHANGELOG.md)
+- We follow SemVer for stable releases and use prerelease tags while iterating
+- Prefer pinning action usage to a release tag (`@v0.1.0-alpha.8` or newer), not `@main`
+
+## Project docs
+
+- [Contributing guide](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security policy](SECURITY.md)
+- [Support guide](SUPPORT.md)
 
 ## Related projects (attribution)
 
