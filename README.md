@@ -2,7 +2,13 @@
 
 Open-source AI code review for GitHub pull requests.
 
+Built by [@timithechef](https://x.com/timithechef).
+
 Enkii is a **Greptile / CodeRabbit-style alternative** built on **PI + GitHub Actions** with a simple model: bring your own OpenRouter key, keep prompts editable, and run reviews in your own repo.
+
+## Name origin
+
+The name **Enkii** is inspired by **Enki** — the Sumerian god associated with wisdom, craft, and problem-solving.
 
 ## Why enkii exists
 
@@ -48,8 +54,6 @@ on:
     types: [created]
   pull_request_review_comment:
     types: [created]
-  pull_request_review:
-    types: [submitted]
 
 permissions:
   contents: read
@@ -57,7 +61,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: enkii-pr-${{ github.event.pull_request.number || github.event.issue.number || github.event.pull_request_review.pull_request.number || github.run_id }}
+  group: enkii-pr-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -76,6 +80,8 @@ jobs:
 ```
 
 > Yes, `actions/checkout` is required.
+>
+> Avoid adding `pull_request_review: submitted` to this workflow with `cancel-in-progress: true` — it can self-cancel when enkii posts its own review.
 
 ### 3) Open a PR
 
@@ -173,6 +179,15 @@ If you’re asking an AI agent to set up enkii in a repository, give it this che
 
 - enkii now updates its tracking comment when a run fails, instead of silently leaving a dangling “working…” state.
 - If inline anchors fail, enkii preserves findings in summary notes rather than dropping the entire review.
+
+## Related projects (attribution)
+
+Enkii is part of an ecosystem of AI code review tools. Big respect to projects that pushed the category forward:
+
+- [Factory](https://factory.ai)
+- [PR-Agent](https://github.com/Codium-ai/pr-agent)
+- [Greptile](https://greptile.com)
+- [CodeRabbit](https://www.coderabbit.ai)
 
 ## Current status
 
