@@ -1,108 +1,187 @@
 # enkii
 
-> Open-source GitHub Action for AI-powered pull request reviews. Bring your own OpenRouter key. No vendor lock-in.
+Open-source AI code review for GitHub pull requests.
 
-**Status:** alpha (v0.1 / beta in active development). Not ready for production yet. Star the repo if you want to follow along.
+Enkii is a **Greptile / CodeRabbit-style alternative** built on **PI + GitHub Actions** with a simple model: bring your own OpenRouter key, keep prompts editable, and run reviews in your own repo.
 
-Named after the Mesopotamian god of knowledge, caution, and foresight. Enki was the wise advisor who warned the other gods before they did dumb things, which is roughly the job description for a code review bot.
+## Why enkii exists
 
-## What it is
+Most AI review tools are useful but closed, expensive, or hard to tune. Enkii is for teams that want:
 
-A small GitHub Action that runs LLM-powered code reviews on pull requests. Same shape as Greptile / CodeRabbit / Devin Review / Factory Droid Review, except:
+- No vendor lock-in
+- Editable review behavior (markdown skill files)
+- Transparent, repo-native automation
+- Bring-your-own model/provider via OpenRouter
 
-- **You bring the inference.** It points at OpenRouter with your API key. Default model is DeepSeek V4 Pro; override with any OpenRouter model ID.
-- **No vendor backend.** enkii has no servers, no auth, no billing. Runs entirely on your GitHub Actions minutes + your OpenRouter spend.
-- **Open weights by default.** OSS-friendly stack: embedded `pi-agent-core`, OpenRouter routing, DeepSeek V4 Pro (or any OSS model you prefer).
-- **Methodology is the product.** The reviewer's behavior is defined by markdown skill files (`review.md`, `security-review.md`) bundled in this repo. Override with your own `.enkii/review.md` to teach it your team's conventions.
+## What enkii does today
 
-## How it'll work (when shipped)
+- Automatic code review on PR open/sync/reopen
+- On-demand commands in PR comments:
+  - `@enkii /review` — re-run code review
+  - `@enkii /benchmark` — fresh review ignoring prior PR comments
+  - `@enkii /security` — focused security review
+  - `@enkii` or `@enkii help` — help reply
+  - `@enkii status` — status reply
+- Optional two-pass validation pipeline (`enable_validator=true`)
+- Inline comments + resilient summary fallback for unanchorable comments
+
+## Quick start (5 minutes)
+
+### 1) Add OpenRouter key
+
+Create a repo secret:
+
+- Name: `OPENROUTER_API_KEY`
+- Value: your key from <https://openrouter.ai/keys>
+
+### 2) Add workflow
+
+Create `.github/workflows/enkii-review.yml`:
 
 ```yaml
-# .github/workflows/enkii-review.yml
 name: enkii review
+
 on:
   pull_request:
     types: [opened, synchronize, reopened]
   issue_comment:
     types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
 
 permissions:
-  pull-requests: write
   contents: read
+  pull-requests: write
   issues: write
 
 concurrency:
-  group: enkii-pr-${{ github.event.pull_request.number || github.event.issue.number }}
+  group: enkii-pr-${{ github.event.pull_request.number || github.event.issue.number || github.event.pull_request_review.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - uses: Timmyy3000/enkii@v0.1
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run enkii
+        uses: Timmyy3000/enkii@main
         with:
           openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
 ```
 
-Triggers:
+> Yes, `actions/checkout` is required.
 
-- `pull_request` (opened/synchronize/reopened) — automatic code review (skipped on draft PRs)
-- Comment `@enkii /review` — re-run code review
-- Comment `@enkii /benchmark` — run a fresh code review without prior PR comments
-- Comment `@enkii /security` — separate security review
-- Comment `@enkii` alone — replies with help
+### 3) Open a PR
 
-## Setup
+enkii runs automatically. You can then comment with:
 
-By default, `review_model` and `security_model` are `@preset/enkii`. This means enkii expects an OpenRouter preset named `enkii` on the account behind your `OPENROUTER_API_KEY`. Reasons to use a preset over a raw model name: a single OpenRouter setting controls model + provider order + fallbacks, prompt caching warms up consistently across calls, and you can swap the underlying model without touching your workflow file.
+- `@enkii /review`
+- `@enkii /security`
+- `@enkii /benchmark`
 
-**Recommended path: create the preset.**
+## Model configuration
 
-1. Open your OpenRouter dashboard's Presets settings
-2. Create a preset named `enkii` with:
-   - **Model:** `<your-model>` (any OpenRouter model id)
-   - **Provider order:** `<your-primary-provider>`, `<your-fallback-provider>` — pick based on your own price / uptime / sovereignty preferences
-   - **Allow fallbacks:** yes
-   - **Ignored providers:** any you want to avoid (e.g. ones with weak cache discounts or unreliable uptime)
-3. Done. The default workflow snippet above will route through your preset.
+By default, enkii uses:
 
-**Override path: skip the preset, name a model directly.**
+- `review_model: "@preset/enkii"`
+- `security_model: "@preset/enkii"`
 
-If you don't want to set up a preset, override `review_model` and `security_model` with any OpenRouter model id:
+That means your OpenRouter account should have a preset named `enkii`.
+
+### Recommended preset path
+
+Create OpenRouter preset `enkii` and set:
+
+- model: your preferred model
+- provider order: your preferred primary/fallback providers
+- allow fallbacks: enabled
+
+### Direct model override path
+
+You can skip presets and set model IDs directly:
 
 ```yaml
-- uses: Timmyy3000/enkii@v0.1
+- name: Run enkii
+  uses: Timmyy3000/enkii@main
   with:
     openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
-    review_model: "<your-model-id>"
-    security_model: "<your-model-id>"
+    review_model: deepseek/deepseek-chat-v4.1
+    security_model: deepseek/deepseek-chat-v4.1
 ```
 
-You'll lose the consistent provider routing (and most of the prompt caching) but it works.
+## Action inputs
 
-## Why this exists
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `openrouter_api_key` | yes | — | OpenRouter API key |
+| `github_token` | no | workflow `github.token` | Override token (advanced) |
+| `review_model` | no | `@preset/enkii` | Model for code review |
+| `security_model` | no | `@preset/enkii` | Model for security review |
+| `review_skill_path` | no | `""` | Custom review skill path |
+| `security_skill_path` | no | `""` | Custom security skill path |
+| `enable_validator` | no | `"false"` | Two-pass review validation |
+| `run_security` | no | `"true"` | Auto-run security review on PR events |
 
-Greptile, CodeRabbit, Devin Review, and Factory Droid Review are good products. They're also commercial, vendor-locked, and varying degrees of opaque about what they actually run.
+## Action outputs
 
-enkii is the side-project answer for people who want:
+| Output | Description |
+|---|---|
+| `contains_trigger` | Whether the current event matched enkii trigger logic |
+| `code_review_id` | GitHub review ID for code review post (if posted) |
+| `security_review_id` | GitHub review ID for security review post (if posted) |
 
-- Self-hosted OSS code reviews
-- Their own model choice (any OpenRouter-supported model)
-- Their own review methodology (markdown skill files, MIT-licensed)
-- No per-seat pricing or proprietary cloud dependency
+## Customizing review behavior
 
-It's not trying to be the best reviewer on the market. It's trying to be a useful one with no lock-in. If you want best-in-class commercial review, use Greptile or CodeRabbit. If you want something you control, use this.
+Enkii’s behavior is prompt/skill-driven.
 
-## Related projects
+Bundled defaults:
 
-- [`pr-agent`](https://github.com/qodo-ai/pr-agent) (Qodo, Apache 2.0) — closest OSS alternative; mature, multi-model, similar pitch. If pr-agent works for you, use pr-agent. enkii differs mainly in skill markdown as the customization unit + runtime-agnostic methodology.
-- [`Factory-AI/droid-action`](https://github.com/Factory-AI/droid-action) (MIT) — Factory's open-sourced action plumbing. enkii borrows the GitHub auth + PR data fetching + prompt scaffolding from here, replaces the closed `droid` CLI runtime with `pi-agent-core` + OpenRouter.
-- [GitHub Copilot Code Review](https://docs.github.com/copilot) — native to GitHub. Use this if you're on a Copilot plan and don't need self-hosted.
+- `skills/review.md`
+- `skills/security-review.md`
 
-## License
+To customize in your repo:
 
-MIT. See [LICENSE](LICENSE).
+1. Create `.enkii/review.md` and/or `.enkii/security-review.md`
+2. Point workflow inputs:
+
+```yaml
+with:
+  openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+  review_skill_path: .enkii/review.md
+  security_skill_path: .enkii/security-review.md
+```
+
+## AI-agent setup notes (copy/paste context)
+
+If you’re asking an AI agent to set up enkii in a repository, give it this checklist:
+
+1. Create secret `OPENROUTER_API_KEY`
+2. Create `.github/workflows/enkii-review.yml` using the workflow above
+3. Ensure workflow has `actions/checkout@v4` with `fetch-depth: 0`
+4. Ensure permissions include `pull-requests: write`, `issues: write`, `contents: read`
+5. Open a test PR and verify enkii posts a review
+6. Comment `@enkii /security` and verify a security review thread appears
+7. (Optional) add `.enkii/review.md` and wire `review_skill_path`
+
+## Reliability notes
+
+- enkii now updates its tracking comment when a run fails, instead of silently leaving a dangling “working…” state.
+- If inline anchors fail, enkii preserves findings in summary notes rather than dropping the entire review.
+
+## Current status
+
+Early-stage and actively evolving. Useful now, still opinionated, and open to contributions.
 
 ## Contributing
 
-Project is in early development, contribution guide coming once the v0.1 beta lands. Issues + ideas welcome.
+Issues and PRs are welcome.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
