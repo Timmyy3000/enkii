@@ -74,7 +74,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run enkii
-        uses: Timmyy3000/enkii@main
+        uses: Timmyy3000/enkii@v0.2.0-beta.1
         with:
           openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
 ```
@@ -114,7 +114,7 @@ You can skip presets and set model IDs directly:
 
 ```yaml
 - name: Run enkii
-  uses: Timmyy3000/enkii@main
+  uses: Timmyy3000/enkii@v0.2.0-beta.1
   with:
     openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
     review_model: deepseek/deepseek-chat-v4.1
