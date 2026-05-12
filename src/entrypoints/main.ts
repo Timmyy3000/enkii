@@ -42,6 +42,10 @@ import {
 } from "../post";
 import { postHelpReply } from "../post/help";
 import type { PreparedContext } from "../prompts/types";
+import { fetchEnkiiComment } from "../github/operations/comments/fetch-enkii-comment";
+import { updateEnkiiComment } from "../github/operations/comments/update-enkii-comment";
+import { updateCommentBody } from "../github/operations/comment-logic";
+import { GITHUB_SERVER_URL } from "../github/api/config";
 
 function envFlag(name: string, defaultValue: boolean): boolean {
   const raw = process.env[name];
@@ -71,7 +75,56 @@ function detectForkPR(context: ReturnType<typeof parseGitHubContext>): boolean {
   return Boolean(headRepo?.fork);
 }
 
+async function markTrackingCommentFailed(args: {
+  octokit: ReturnType<typeof createOctokit>;
+  context: ReturnType<typeof parseGitHubContext>;
+  trackingCommentId?: number;
+  errorMessage: string;
+}): Promise<void> {
+  const { octokit, context, trackingCommentId, errorMessage } = args;
+  if (!trackingCommentId || !isEntityContext(context)) return;
+
+  try {
+    const { owner, repo } = context.repository;
+    const fetched = await fetchEnkiiComment(octokit, {
+      owner,
+      repo,
+      commentId: trackingCommentId,
+      isPullRequestReviewCommentEvent:
+        context.eventName === "pull_request_review_comment",
+    });
+
+    const jobUrl = `${GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${context.runId}`;
+    const nextBody = updateCommentBody({
+      currentBody: fetched.comment.body ?? "",
+      actionFailed: true,
+      executionDetails: null,
+      jobUrl,
+      errorDetails: errorMessage,
+    });
+
+    await updateEnkiiComment(octokit.rest, {
+      owner,
+      repo,
+      commentId: trackingCommentId,
+      body: nextBody,
+      isPullRequestReviewComment: fetched.isPRReviewComment,
+    });
+    console.log(`enkii: updated tracking comment ${trackingCommentId} with failure details`);
+  } catch (updateError) {
+    console.warn(
+      `enkii: failed to update tracking comment ${trackingCommentId} after error: ${
+        updateError instanceof Error ? updateError.message : String(updateError)
+      }`,
+    );
+  }
+}
+
 async function run(): Promise<void> {
+  let parsedContext: ReturnType<typeof parseGitHubContext> | null = null;
+  let octokit: ReturnType<typeof createOctokit> | null = null;
+  let trackingCommentId: number | undefined;
+
   try {
     validateEnv();
 
@@ -88,8 +141,9 @@ async function run(): Promise<void> {
     const promptsDir = join(runnerTemp, "enkii-prompts");
 
     const context = parseGitHubContext();
+    parsedContext = context;
     const githubToken = await setupGitHubToken();
-    const octokit = createOctokit(githubToken);
+    octokit = createOctokit(githubToken);
 
     if (isEntityContext(context)) {
       const tokenProvided = !!process.env.OVERRIDE_GITHUB_TOKEN;
@@ -122,6 +176,7 @@ async function run(): Promise<void> {
       octokit,
       githubToken,
     });
+    trackingCommentId = dispatch.trackingCommentId;
     console.log(`enkii dispatch: ${dispatch.command}`);
     if (dispatch.reason) console.log(`Reason: ${dispatch.reason}`);
 
@@ -296,6 +351,14 @@ async function run(): Promise<void> {
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    if (octokit && parsedContext) {
+      await markTrackingCommentFailed({
+        octokit,
+        context: parsedContext,
+        trackingCommentId,
+        errorMessage,
+      });
+    }
     core.setFailed(`enkii failed: ${errorMessage}`);
     process.exit(1);
   }
