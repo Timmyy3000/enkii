@@ -2,6 +2,21 @@
 
 All notable changes to enkii will be documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- OSS project hygiene docs: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, and `SUPPORT.md`.
+- GitHub issue templates (bug report + feature request), issue template config, and PR template.
+- CI workflow (`.github/workflows/ci.yml`) for tests and typecheck on PRs and pushes.
+
+### Changed
+
+- Dogfood workflow and README setup example no longer include `pull_request_review: submitted` to avoid self-cancel races with `cancel-in-progress: true`.
+- `action.yml` now conditionally masks `OPENROUTER_API_KEY` only when provided, avoiding empty-mask warnings.
+- Pinned `oven-sh/setup-bun` to a full commit SHA for stronger supply-chain safety.
+- README now uses a release tag (`@v0.1.0-alpha.8`) instead of `@main`, and includes compatibility/troubleshooting/versioning guidance.
+
 ## [0.1.0-alpha.8] — 2026-05-05
 
 ### Changed

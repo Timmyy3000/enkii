@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a reproducible problem with enkii
+title: "bug: "
+labels: [bug]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What broke?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Exact steps to reproduce.
+      placeholder: |
+        1. Configure workflow...
+        2. Open PR...
+        3. Comment @enkii /review...
+    validations:
+      required: true
+  - type: input
+    id: run_link
+    attributes:
+      label: GitHub Actions run link
+      placeholder: https://github.com/<owner>/<repo>/actions/runs/<id>
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Workflow YAML
+      description: Paste your `.github/workflows/enkii-review.yml`
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Redact secrets before posting.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true

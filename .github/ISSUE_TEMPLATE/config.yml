@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security issue
+    url: https://github.com/Timmyy3000/enkii/security/advisories/new
+    about: Report vulnerabilities privately.
+  - name: Support
+    url: https://github.com/Timmyy3000/enkii/blob/main/SUPPORT.md
+    about: Setup and troubleshooting help.
