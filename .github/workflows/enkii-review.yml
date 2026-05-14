@@ -14,11 +14,12 @@ permissions:
   issues: write
 
 concurrency:
-  group: enkii-pr-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
+  group: enkii-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   review:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
