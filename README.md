@@ -33,6 +33,8 @@ Most AI review tools are useful but closed, expensive, or hard to tune. Enkii is
 
 ## Quick start (5 minutes)
 
+Use the moving `v0.2` tag unless you need strict pinning to one exact build. `v0.2` will be moved forward to the latest compatible `0.2.x` release, while exact tags like `v0.2.0-beta.2` stay immutable.
+
 ### 1) Add OpenRouter key
 
 Create a repo secret:
@@ -74,7 +76,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run enkii
-        uses: Timmyy3000/enkii@v0.2.0-beta.1
+        uses: Timmyy3000/enkii@v0.2
         with:
           openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
 ```
@@ -114,11 +116,17 @@ You can skip presets and set model IDs directly:
 
 ```yaml
 - name: Run enkii
-  uses: Timmyy3000/enkii@v0.2.0-beta.1
+  uses: Timmyy3000/enkii@v0.2
   with:
     openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
     review_model: deepseek/deepseek-chat-v4.1
     security_model: deepseek/deepseek-chat-v4.1
+```
+
+If you need a fully reproducible rollout, pin an exact release tag instead:
+
+```yaml
+uses: Timmyy3000/enkii@v0.2.0-beta.2
 ```
 
 ## Action inputs
