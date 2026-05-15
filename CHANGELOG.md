@@ -2,6 +2,30 @@
 
 All notable changes to enkii will be documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning follows [SemVer](https://semver.org/).
 
+## [0.2.0-beta.2] — 2026-05-15
+
+### Fixed
+
+- Retry review-agent runs that finish without calling `submit_review`, reducing intermittent security/code review failures caused by missed final submit-tool calls.
+
+## [0.2.0-beta.1] — 2026-05-14
+
+### Fixed
+
+- Stopped the enkii GitHub workflow from self-canceling on PR runs.
+
+## [0.1.2] — 2026-05-06
+
+### Fixed
+
+- Added retries around transient GitHub PR review creation failures so posting review results is less likely to fail on brief provider/API hiccups.
+
+## [0.1.1] — 2026-05-06
+
+### Changed
+
+- Prefixed runtime tool logs by review kind so code-review and security-review traces are easier to distinguish in action logs.
+
 ## [0.1.0-alpha.8] — 2026-05-05
 
 ### Changed
@@ -116,3 +140,7 @@ First end-to-end alpha. Code-complete on the v0.1 plan; not yet validated agains
 [0.1.0-alpha.3]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.0-alpha.1
+[0.1.1]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.1
+[0.1.2]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.2
+[0.2.0-beta.1]: https://github.com/Timmyy3000/enkii/releases/tag/v0.2.0-beta.1
+[0.2.0-beta.2]: https://github.com/Timmyy3000/enkii/releases/tag/v0.2.0-beta.2
