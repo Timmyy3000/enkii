@@ -36,3 +36,4 @@ coverage/
 # Runtime artifacts
 runner-temp/
 .cache/
+benchmarks/

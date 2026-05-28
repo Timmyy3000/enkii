@@ -63,8 +63,8 @@ permissions:
   issues: write
 
 concurrency:
-  group: enkii-pr-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
-  cancel-in-progress: true
+  group: enkii-pr-${{ github.event.pull_request.number || github.event.issue.number }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   review:
@@ -84,6 +84,8 @@ jobs:
 > Yes, `actions/checkout` is required.
 >
 > Avoid adding `pull_request_review: submitted` to this workflow with `cancel-in-progress: true` — it can self-cancel when enkii posts its own review.
+
+Use the event name in the concurrency key and only cancel in-progress `pull_request` runs. Otherwise any later PR comment can start an `issue_comment` run that cancels an active enkii review before the job-level `if:` has a chance to skip it.
 
 ### 3) Open a PR
 
