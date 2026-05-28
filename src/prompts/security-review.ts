@@ -103,9 +103,10 @@ When finished, call \`submit_review\` exactly once using this exact schema:
 
 <critical_constraints>
 **DO NOT** post to GitHub.
-**DO NOT** invoke any PR mutation tools (inline comments, submit review, delete/minimize/reply/resolve, etc.).
+**DO NOT** invoke any GitHub PR mutation tools (inline comments, GitHub review submission, delete/minimize/reply/resolve, etc.).
 **DO NOT** modify files.
 Use only \`read\`, \`grep\`, \`find\`, \`ls\`, \`artifact_paths\`, and \`submit_review\`.
+The local \`submit_review\` tool is required and is not a GitHub mutation.
 Do not answer with prose. The \`submit_review\` tool arguments are the final output.
 </critical_constraints>
 `;
