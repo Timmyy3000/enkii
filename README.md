@@ -32,8 +32,8 @@ permissions:
   issues: write
 
 concurrency:
-  group: enkii-pr-${{ github.event.pull_request.number || github.event.issue.number }}
-  cancel-in-progress: true
+  group: enkii-pr-${{ github.event.pull_request.number || github.event.issue.number }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   review:
@@ -43,6 +43,8 @@ jobs:
         with:
           openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
 ```
+
+Use the event name in the concurrency key and only cancel in-progress `pull_request` runs. Otherwise any later PR comment can start an `issue_comment` run that cancels an active enkii review before the job-level `if:` has a chance to skip it.
 
 Triggers:
 

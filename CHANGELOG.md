@@ -2,6 +2,12 @@
 
 All notable changes to enkii will be documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- Updated the recommended workflow concurrency settings so `issue_comment` runs do not cancel in-flight `pull_request` reviews for the same PR.
+
 ## [0.1.0-alpha.8] — 2026-05-05
 
 ### Changed
