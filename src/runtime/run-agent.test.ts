@@ -14,6 +14,13 @@ describe("runAgent", () => {
     expect(compat?.openRouterRouting).toBeUndefined();
   });
 
+  test("uses system-role compatibility for preset model ids", () => {
+    const model = getOpenRouterModel("@preset/enkii");
+    const compat = model.compat as { supportsDeveloperRole?: boolean } | undefined;
+
+    expect(compat?.supportsDeveloperRole).toBe(false);
+  });
+
   test("retries once when the agent returns without calling submit_review", async () => {
     const prompts: string[] = [];
     let attempts = 0;

@@ -13,6 +13,7 @@
 - Use `rg --files` first when a user-provided path is missing, then search parent directories if needed.
 - For the Pi spike, `@mariozechner/pi-ai` has native `openrouter` provider support. `@preset/enkii` is not in the static model registry, so clone the `deepseek/deepseek-v4-pro` OpenRouter model config and override `id`.
 - When using OpenRouter presets such as `@preset/enkii`, do not set `compat.openRouterRouting.sort = "price"` on the cloned model. That overrides preset/provider routing and defeats provider preferences.
+- For custom/preset OpenRouter ids cloned from a base model, set `compat.supportsDeveloperRole = false` unless you have confirmed the routed provider accepts `developer` messages; otherwise OpenRouter can fail before the first tool call.
 - 2026-05-05 Pi/OpenRouter spike succeeded with `@preset/enkii`: model called `read_file`, then `submit_review`; `CandidatesPassSchema` parsed; inline sample completed in 27.4s.
 - 2026-05-05 production `runReview` smoke with temp artifacts succeeded through Pi runtime: read artifacts, used tools, called `submit_review`, wrote candidates/validated in 65.0s.
 - `enkii: agent did not call submit_review` means the agent loop returned without invoking the required submit tool; this is distinct from schema-validation failures, which only happen after the submit tool is called.

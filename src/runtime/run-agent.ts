@@ -59,6 +59,10 @@ export function getOpenRouterModel(modelId: string): Model<any> {
     ...base,
     id: modelId,
     name: modelId,
+    compat: {
+      ...base.compat,
+      supportsDeveloperRole: false,
+    },
   };
 }
 
