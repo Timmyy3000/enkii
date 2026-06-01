@@ -6,9 +6,11 @@ import type { PreparedContext } from "./types";
 function buildContext(): PreparedContext {
   return {
     repository: "Docsyde/docsyde-backend",
+    triggerPhrase: "@enkii",
     eventData: {
+      eventName: "pull_request",
       isPR: true,
-      prNumber: 316,
+      prNumber: "316",
       baseBranch: "main",
     },
     prBranchData: {

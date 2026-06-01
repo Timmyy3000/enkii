@@ -2,9 +2,18 @@ import { describe, expect, test } from "bun:test";
 import type { Static } from "@mariozechner/pi-ai";
 import { SubmitCandidatesParameters } from "./tool-schemas";
 import { createSubmitCandidatesTool } from "./tools/submit";
-import { runAgent } from "./run-agent";
+import { getOpenRouterModel, runAgent } from "./run-agent";
 
 describe("runAgent", () => {
+  test("does not override OpenRouter routing for preset model ids", () => {
+    const model = getOpenRouterModel("@preset/enkii");
+    const compat = model.compat as { openRouterRouting?: unknown } | undefined;
+
+    expect(model.id).toBe("@preset/enkii");
+    expect(model.name).toBe("@preset/enkii");
+    expect(compat?.openRouterRouting).toBeUndefined();
+  });
+
   test("retries once when the agent returns without calling submit_review", async () => {
     const prompts: string[] = [];
     let attempts = 0;

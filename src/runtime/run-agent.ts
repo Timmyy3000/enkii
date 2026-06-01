@@ -51,7 +51,7 @@ export class AgentRunError extends Error {
   }
 }
 
-function getOpenRouterModel(modelId: string): Model<any> {
+export function getOpenRouterModel(modelId: string): Model<any> {
   const base = getModel("openrouter", "deepseek/deepseek-v4-pro");
   if (modelId === base.id) return base;
 
@@ -59,12 +59,6 @@ function getOpenRouterModel(modelId: string): Model<any> {
     ...base,
     id: modelId,
     name: modelId,
-    compat: {
-      ...base.compat,
-      openRouterRouting: {
-        sort: "price",
-      },
-    },
   };
 }
 
