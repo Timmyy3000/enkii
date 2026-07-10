@@ -72,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -216,7 +216,7 @@ If you’re asking an AI agent to set up enkii in a repository, give it this che
 
 1. Create secret `OPENROUTER_API_KEY`
 2. Create `.github/workflows/enkii-review.yml` using the workflow above
-3. Ensure workflow has `actions/checkout@v4` with `fetch-depth: 0`
+3. Ensure workflow has `actions/checkout@v7` with `fetch-depth: 0`
 4. Ensure permissions include `pull-requests: write`, `issues: write`, `contents: read`
 5. Open a test PR and verify enkii posts a review
 6. Comment `@enkii /security` and verify a security review thread appears
