@@ -9,7 +9,7 @@
 - Worktree path: `C:\Users\ASUS\Documents\DocSyde\Codebase\enkii\.forest\worktrees\ft\codex\policy-review`
 - Created: 2026-07-10
 - Target date: not specified
-- Current phase: final plan readiness review
+- Current phase: pull request preparation
 
 ## Objective
 
@@ -47,25 +47,25 @@ The original issue proposed passing the engineering guide directly into a bundle
 
 ## Acceptance Criteria
 
-- [ ] `policy_review_skill_path` can point to a committed repository-relative Markdown file such as `.enkii/policy-review.md`.
-- [ ] Empty `policy_review_skill_path` disables policy review without errors or behavior changes in other lanes.
-- [ ] Supported automatic PR events start code, security when enabled, and policy when configured in the same concurrent task group.
-- [ ] Policy review has no dedicated slash command in v1.
-- [ ] The policy agent can follow its prompt to read a referenced repository guide from PR HEAD.
-- [ ] The repository prompt can define citation and output conventions without a hard-coded policy rule-ID contract.
-- [ ] Final posted policy inline bodies and summary content preserve prompt-defined citations and semantic wording inside Enkii's documented presentation envelope.
-- [ ] Policy reviews omit the generic mergeability score/verdict and preserve complete finding bodies through spillover, unanchored, and summary-only retry rendering.
-- [ ] Policy review posts an independent review using `<!-- enkii-policy-review -->` and exposes `policy_review_id`.
-- [ ] Policy review artifacts use distinct filenames and cannot collide with code/security artifacts.
-- [ ] Policy review uses the configured policy model, with an empty model input inheriting `review_model`.
-- [ ] Existing validator behavior works for policy candidates.
-- [ ] Invalid, missing, oversized, absolute, traversal, and non-regular prompt paths fail safely with actionable errors.
-- [ ] Documentation explains HEAD sourcing, fork behavior, CODEOWNERS guidance, configuration, cost, and automatic triggers.
-- [ ] Tests cover enablement, prompt loading, concurrent dispatch, output selection, markers, posting labels, disabled behavior, and fork behavior.
-- [ ] Policy runs only for automatic dispatch with a configured path; `/review`, `/benchmark`, `/security`, help, status, and unrelated comment events never select it.
-- [ ] When policy loading or execution fails, successful code/security lanes still post; the action then reports the policy-specific failure.
-- [ ] When any lane's GitHub posting fails, other successful lanes still post, their output IDs are retained, and the action fails afterward with lane-specific diagnostics.
-- [ ] Path tests cover sibling-prefix escapes, symlinks, directories, absolute paths, traversal, missing files, and oversized files.
+- [x] `policy_review_skill_path` can point to a committed repository-relative Markdown file such as `.enkii/policy-review.md`.
+- [x] Empty `policy_review_skill_path` disables policy review without errors or behavior changes in other lanes.
+- [x] Supported automatic PR events start code, security when enabled, and policy when configured in the same concurrent task group.
+- [x] Policy review has no dedicated slash command in v1.
+- [x] The policy agent can follow its prompt to read a referenced repository guide from PR HEAD.
+- [x] The repository prompt can define citation and output conventions without a hard-coded policy rule-ID contract.
+- [x] Final posted policy inline bodies and summary content preserve prompt-defined citations and semantic wording inside Enkii's documented presentation envelope.
+- [x] Policy reviews omit the generic mergeability score/verdict and preserve complete finding bodies through spillover, unanchored, and summary-only retry rendering.
+- [x] Policy review posts an independent review using `<!-- enkii-policy-review -->` and exposes `policy_review_id`.
+- [x] Policy review artifacts use distinct filenames and cannot collide with code/security artifacts.
+- [x] Policy review uses the configured policy model, with an empty model input inheriting `review_model`.
+- [x] Existing validator behavior works for policy candidates.
+- [x] Invalid, missing, oversized, absolute, traversal, and non-regular prompt paths fail safely with actionable errors.
+- [x] Documentation explains HEAD sourcing, fork behavior, CODEOWNERS guidance, configuration, cost, and automatic triggers.
+- [x] Tests cover enablement, prompt loading, concurrent dispatch, output selection, markers, posting labels, disabled behavior, and fork behavior.
+- [x] Policy runs only for automatic dispatch with a configured path; `/review`, `/benchmark`, `/security`, help, status, and unrelated comment events never select it.
+- [x] When policy loading or execution fails, successful code/security lanes still post; the action then reports the policy-specific failure.
+- [x] When any lane's GitHub posting fails, other successful lanes still post, their output IDs are retained, and the action fails afterward with lane-specific diagnostics.
+- [x] Path tests cover sibling-prefix escapes, symlinks, directories, absolute paths, traversal, missing files, and oversized files.
 
 ## Evidence And Sources
 
@@ -114,3 +114,7 @@ The original issue proposed passing the engineering guide directly into a bundle
 - The plan is based on `origin/main` at `314b99bc6614ed1cb5d936a045229287dc7b7d97`.
 - Two independent adversarial reviews completed on 2026-07-10. All major findings were incorporated into fork semantics, path safety, every final-rendering path, execution/posting failure isolation, and dispatch coverage.
 - No implementation begins until the plan is approved.
+- Plan approved and implementation completed on 2026-07-10.
+- Validation: `bun run typecheck` passed; `bun test` passed with 25 tests and one Windows-only symlink skip; all changed TypeScript files pass Prettier.
+- Repository-wide `bun run format:check` remains blocked by 33 pre-existing untouched files.
+- Local code review found one P1 fork-classification issue; fixed by comparing head/base repository identity and covered by regression tests. No remaining P0-P2 findings.
