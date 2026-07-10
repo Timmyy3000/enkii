@@ -4,6 +4,8 @@ All notable changes to enkii will be documented here. Format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.2.0-beta.4] — 2026-07-10
+
 ### Added
 
 - OSS project hygiene docs: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, and `SUPPORT.md`.
@@ -20,10 +22,27 @@ All notable changes to enkii will be documented here. Format follows [Keep a Cha
 - README now uses the compatible `@v0.2` tag instead of `@main`, and includes compatibility, troubleshooting, and versioning guidance.
 - Review execution and GitHub posting now settle per lane so successful code, security, or policy reviews are preserved when another lane fails.
 - Hardened repository skill-path validation against traversal, sibling-prefix escapes, symlinks, directories, and oversized files.
+- Updated the dogfood workflow to the Node 24-compatible `actions/checkout@v7` release and pinned its immutable commit SHA.
 
 ### Security
 
 - Fork-owned policy prompts are skipped without disabling code/security review; the tracking comment explains the skip.
+
+## [0.2.0-beta.3] — 2026-05-28
+
+### Added
+
+- Added repository benchmarking and bot-latency scripts for comparing review models and measuring end-to-end response time.
+- Added prompt regression coverage for the required `submit_review` tool contract.
+
+### Fixed
+
+- Removed contradictory prompt wording that could prevent review agents from calling `submit_review`.
+- Kept dogfood review runs isolated across pull-request and comment events so unrelated comments cannot cancel an in-flight review.
+
+### Changed
+
+- Recommended the moving `v0.2` action tag and preserved exact prerelease tags for reproducible workflows.
 
 ## [0.2.0-beta.2] — 2026-05-15
 
@@ -167,3 +186,5 @@ First end-to-end alpha. Code-complete on the v0.1 plan; not yet validated agains
 [0.1.2]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.2
 [0.2.0-beta.1]: https://github.com/Timmyy3000/enkii/releases/tag/v0.2.0-beta.1
 [0.2.0-beta.2]: https://github.com/Timmyy3000/enkii/releases/tag/v0.2.0-beta.2
+[0.2.0-beta.3]: https://github.com/Timmyy3000/enkii/releases/tag/v0.2.0-beta.3
+[0.2.0-beta.4]: https://github.com/Timmyy3000/enkii/releases/tag/v0.2.0-beta.4

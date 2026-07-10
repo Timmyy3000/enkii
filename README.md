@@ -34,7 +34,7 @@ Most AI review tools are useful but closed, expensive, or hard to tune. Enkii is
 
 ## Quick start (5 minutes)
 
-Use the moving `v0.2` tag unless you need strict pinning to one exact build. `v0.2` will be moved forward to the latest compatible `0.2.x` release, while exact tags like `v0.2.0-beta.2` stay immutable.
+Use the moving `v0.2` tag unless you need strict pinning to one exact build. `v0.2` will be moved forward to the latest compatible `0.2.x` release, while exact tags like `v0.2.0-beta.4` stay immutable.
 
 ### 1) Add OpenRouter key
 
@@ -72,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -128,7 +128,7 @@ You can skip presets and set model IDs directly:
 If you need a fully reproducible rollout, pin an exact release tag instead:
 
 ```yaml
-uses: Timmyy3000/enkii@v0.2.0-beta.2
+uses: Timmyy3000/enkii@v0.2.0-beta.4
 ```
 
 ## Compatibility matrix
@@ -224,7 +224,7 @@ If you’re asking an AI agent to set up enkii in a repository, give it this che
 
 1. Create secret `OPENROUTER_API_KEY`
 2. Create `.github/workflows/enkii-review.yml` using the workflow above
-3. Ensure workflow has `actions/checkout@v4` with `fetch-depth: 0`
+3. Ensure workflow has `actions/checkout@v7` with `fetch-depth: 0`
 4. Ensure permissions include `pull-requests: write`, `issues: write`, `contents: read`
 5. Open a test PR and verify enkii posts a review
 6. Comment `@enkii /security` and verify a security review thread appears
