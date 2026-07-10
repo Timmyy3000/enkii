@@ -6,11 +6,18 @@ All notable changes to enkii will be documented here. Format follows [Keep a Cha
 
 ### Added
 
+- OSS project hygiene docs: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, and `SUPPORT.md`.
+- GitHub issue templates (bug report + feature request), issue template config, and PR template.
+- CI workflow (`.github/workflows/ci.yml`) for tests and typecheck on PRs and pushes.
 - Added an opt-in repository policy-review lane configured with `policy_review_skill_path`. The repository-owned prompt is loaded from same-repository PR HEAD, can direct the agent to ordinary engineering guides, and runs concurrently on automatic PR events.
 - Added `policy_review_model` with `review_model` inheritance and the `policy_review_id` action output.
 
 ### Changed
 
+- Dogfood workflow and README setup example no longer include `pull_request_review: submitted` to avoid self-cancel races with `cancel-in-progress: true`.
+- `action.yml` now conditionally masks `OPENROUTER_API_KEY` only when provided, avoiding empty-mask warnings.
+- Pinned `oven-sh/setup-bun` to a full commit SHA for stronger supply-chain safety.
+- README now uses the compatible `@v0.2` tag instead of `@main`, and includes compatibility, troubleshooting, and versioning guidance.
 - Review execution and GitHub posting now settle per lane so successful code, security, or policy reviews are preserved when another lane fails.
 - Hardened repository skill-path validation against traversal, sibling-prefix escapes, symlinks, directories, and oversized files.
 
