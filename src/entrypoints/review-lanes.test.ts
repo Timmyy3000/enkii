@@ -2,9 +2,34 @@ import { describe, expect, test } from "bun:test";
 import {
   type ReviewLane,
   type ReviewLaneKind,
+  isForkPullRequestPayload,
   selectReviewKinds,
   settleReviewLanes,
 } from "./review-lanes";
+
+describe("isForkPullRequestPayload", () => {
+  test("does not treat a same-repository PR as a fork when the repository itself is forked", () => {
+    expect(
+      isForkPullRequestPayload({
+        pull_request: {
+          head: { repo: { full_name: "Docsyde/enkii", fork: true } },
+          base: { repo: { full_name: "Docsyde/enkii" } },
+        },
+      }),
+    ).toBe(false);
+  });
+
+  test("detects a cross-repository PR by repository identity", () => {
+    expect(
+      isForkPullRequestPayload({
+        pull_request: {
+          head: { repo: { full_name: "contributor/enkii", fork: true } },
+          base: { repo: { full_name: "Docsyde/enkii" } },
+        },
+      }),
+    ).toBe(true);
+  });
+});
 
 describe("selectReviewKinds", () => {
   test("selects policy only for automatic dispatch with a configured path", () => {

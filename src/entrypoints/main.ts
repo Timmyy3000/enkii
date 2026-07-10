@@ -53,6 +53,7 @@ import { updateCommentBody } from "../github/operations/comment-logic";
 import { GITHUB_SERVER_URL } from "../github/api/config";
 import {
   type ReviewLane,
+  isForkPullRequestPayload,
   selectReviewKinds,
   settleReviewLanes,
 } from "./review-lanes";
@@ -73,16 +74,6 @@ function validateEnv(): void {
         "→ name OPENROUTER_API_KEY, value from https://openrouter.ai/keys",
     );
   }
-}
-
-function detectForkPR(context: ReturnType<typeof parseGitHubContext>): boolean {
-  const payload = context.payload as Record<string, unknown> | undefined;
-  if (!payload) return false;
-  const pr = payload.pull_request as Record<string, unknown> | undefined;
-  if (!pr) return false;
-  const head = pr.head as Record<string, unknown> | undefined;
-  const headRepo = head?.repo as Record<string, unknown> | undefined;
-  return Boolean(headRepo?.fork);
 }
 
 async function markTrackingCommentFailed(args: {
@@ -253,7 +244,7 @@ async function run(): Promise<void> {
       );
     }
 
-    const isForkPR = detectForkPR(context);
+    const isForkPR = isForkPullRequestPayload(context.payload);
     const selection = selectReviewKinds({
       command: dispatch.command,
       runSecurity,
