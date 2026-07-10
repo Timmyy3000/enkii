@@ -2,7 +2,7 @@
 
 ## Questions / setup help
 
-Use GitHub Discussions or open an issue with:
+Open a [GitHub issue](https://github.com/Timmyy3000/enkii/issues/new/choose) with:
 
 - workflow YAML
 - relevant Actions run link

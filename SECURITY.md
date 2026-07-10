@@ -8,9 +8,9 @@ enkii is early-stage. Security fixes are prioritized on the latest release tag a
 
 Do **not** open a public issue for vulnerabilities.
 
-Report privately by emailing the maintainer or opening a private security advisory on GitHub:
+Report privately through GitHub's private vulnerability reporting form:
 
-- GitHub Security Advisories (preferred)
+- [Open a private GitHub Security Advisory](https://github.com/Timmyy3000/enkii/security/advisories/new) (preferred)
 - Include: impact, repro steps, affected version/tag, and suggested mitigation if available
 
 ## Scope

@@ -5,6 +5,12 @@ import {
 } from "@mariozechner/pi-agent-core";
 import { getModel, type Model, type Usage } from "@mariozechner/pi-ai";
 
+type AgentLike = {
+  subscribe: Agent["subscribe"];
+  prompt: Agent["prompt"];
+  abort: Agent["abort"];
+};
+
 export type RunAgentOptions<T> = {
   systemPrompt: string;
   userPrompt: string;
@@ -13,7 +19,10 @@ export type RunAgentOptions<T> = {
   outputToolName: string;
   getOutput: () => T | undefined;
   timeoutMs?: number;
+  transientRetries?: number;
+  missingOutputRetries?: number;
   logPrefix?: string;
+  createAgent?: (args: ConstructorParameters<typeof Agent>[0]) => AgentLike;
 };
 
 export type RunAgentResult<T> = {
@@ -103,6 +112,13 @@ function parseEnvTransientRetries(): number {
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 1;
 }
 
+function parseEnvMissingOutputRetries(): number {
+  const raw = process.env.ENKII_AGENT_MISSING_OUTPUT_RETRIES;
+  if (!raw) return 1;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 1;
+}
+
 function isTransientProviderError(errorMessage?: string): boolean {
   if (!errorMessage) return false;
   return /network connection lost|request was aborted|timed out|timeout|connection reset|econnreset|etimedout|temporarily unavailable/i.test(
@@ -110,20 +126,49 @@ function isTransientProviderError(errorMessage?: string): boolean {
   );
 }
 
+function isMissingOutputError(
+  errorMessage: string,
+  outputToolName: string,
+): boolean {
+  return errorMessage.startsWith(
+    `enkii: agent did not call ${outputToolName}.`,
+  );
+}
+
+function buildMissingOutputRetryPrompt(
+  userPrompt: string,
+  outputToolName: string,
+  attempt: number,
+): string {
+  return `${userPrompt}
+
+<retry_notice>
+Previous attempt ${attempt} ended without calling \`${outputToolName}\`.
+You must finish this retry by calling \`${outputToolName}\` exactly once with the final structured output.
+Do not stop after reading files. Do not answer with prose.
+</retry_notice>`;
+}
+
 export async function runAgent<T>(
   options: RunAgentOptions<T>,
 ): Promise<RunAgentResult<T>> {
-  const transientRetries = parseEnvTransientRetries();
-  const maxAttempts = transientRetries + 1;
+  let transientRetriesRemaining =
+    options.transientRetries ?? parseEnvTransientRetries();
+  let missingOutputRetriesRemaining =
+    options.missingOutputRetries ?? parseEnvMissingOutputRetries();
   let totalDurationMs = 0;
   let totalToolCallCount = 0;
   const totalUsage = emptyUsage();
 
-  let lastError: AgentRunError | undefined;
+  let attempt = 1;
+  let userPrompt = options.userPrompt;
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  while (true) {
     try {
-      const result = await runAgentAttempt(options);
+      const result = await runAgentAttempt({
+        ...options,
+        userPrompt,
+      });
       totalDurationMs += result.durationMs;
       totalToolCallCount += result.toolCallCount;
       addUsage(totalUsage, result.usage);
@@ -138,33 +183,44 @@ export async function runAgent<T>(
       totalDurationMs += error.durationMs;
       totalToolCallCount += error.toolCallCount;
       addUsage(totalUsage, error.usage);
-      lastError = error;
-      const retryable = isTransientProviderError(error.message);
-      if (!retryable || attempt >= maxAttempts) {
-        throw new AgentRunError(
-          error.message,
-          totalDurationMs,
-          totalToolCallCount,
-          totalUsage,
+      const transient = isTransientProviderError(error.message);
+      if (transient && transientRetriesRemaining > 0) {
+        transientRetriesRemaining--;
+        const prefix = options.logPrefix ? `:${options.logPrefix}` : "";
+        console.warn(
+          `enkii${prefix}: transient provider failure, retrying agent run (${attempt})`,
         );
+        attempt++;
+        continue;
       }
-      const prefix = options.logPrefix ? `:${options.logPrefix}` : "";
-      console.warn(
-        `enkii${prefix}: transient provider failure, retrying agent run (${attempt}/${maxAttempts})`,
+
+      const missingOutput = isMissingOutputError(
+        error.message,
+        options.outputToolName,
+      );
+      if (missingOutput && missingOutputRetriesRemaining > 0) {
+        missingOutputRetriesRemaining--;
+        userPrompt = buildMissingOutputRetryPrompt(
+          options.userPrompt,
+          options.outputToolName,
+          attempt,
+        );
+        const prefix = options.logPrefix ? `:${options.logPrefix}` : "";
+        console.warn(
+          `enkii${prefix}: agent returned without ${options.outputToolName}, retrying with stricter instruction (${attempt})`,
+        );
+        attempt++;
+        continue;
+      }
+
+      throw new AgentRunError(
+        error.message,
+        totalDurationMs,
+        totalToolCallCount,
+        totalUsage,
       );
     }
   }
-
-  if (lastError) {
-    throw new AgentRunError(
-      lastError.message,
-      totalDurationMs,
-      totalToolCallCount,
-      totalUsage,
-    );
-  }
-
-  throw new Error("enkii: unexpected retry loop exit");
 }
 
 async function runAgentAttempt<T>(
@@ -177,7 +233,10 @@ async function runAgentAttempt<T>(
   const usage = emptyUsage();
   const prefix = options.logPrefix ? `:${options.logPrefix}` : "";
 
-  const agent = new Agent({
+  const createAgent =
+    options.createAgent ??
+    ((args: ConstructorParameters<typeof Agent>[0]) => new Agent(args));
+  const agent = createAgent({
     initialState: {
       systemPrompt: options.systemPrompt,
       model: getOpenRouterModel(options.model),

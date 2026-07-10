@@ -28,6 +28,14 @@ inputs:
     description: "Path to a custom security review skill markdown file (relative to repo root). Empty = use bundled default."
     required: false
     default: ""
+  policy_review_skill_path:
+    description: "Path to the repository-owned policy review prompt markdown file, relative to repo root. Empty disables policy review."
+    required: false
+    default: ""
+  policy_review_model:
+    description: "Model used for policy review. Empty inherits review_model."
+    required: false
+    default: ""
   enable_validator:
     description: "Run a Pass 2 validator after the candidate pass. Higher quality, ~2× latency. Default: false (single-pass)."
     required: false
@@ -47,6 +55,9 @@ outputs:
   security_review_id:
     description: "ID of the security review submitted to GitHub, when one was posted"
     value: ${{ steps.enkii.outputs.security_review_id }}
+  policy_review_id:
+    description: "ID of the policy review submitted to GitHub, when one was posted"
+    value: ${{ steps.enkii.outputs.policy_review_id }}
 
 runs:
   using: "composite"
@@ -80,5 +91,7 @@ runs:
         SECURITY_MODEL: ${{ inputs.security_model }}
         REVIEW_SKILL_PATH: ${{ inputs.review_skill_path }}
         SECURITY_SKILL_PATH: ${{ inputs.security_skill_path }}
+        POLICY_REVIEW_SKILL_PATH: ${{ inputs.policy_review_skill_path }}
+        POLICY_REVIEW_MODEL: ${{ inputs.policy_review_model }}
         ENABLE_VALIDATOR: ${{ inputs.enable_validator }}
         RUN_SECURITY: ${{ inputs.run_security }}

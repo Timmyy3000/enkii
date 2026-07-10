@@ -22,4 +22,4 @@ Project maintainers may remove comments, close threads, or block users for viola
 
 ## Reporting
 
-Report incidents to the maintainers via GitHub issues for non-sensitive cases. For sensitive security incidents, follow `SECURITY.md`.
+Do not report Code of Conduct incidents in public GitHub issues. Send a private report through [GitHub's private vulnerability reporting form](https://github.com/Timmyy3000/enkii/security/advisories/new), clearly labeling it as a Code of Conduct report rather than a security vulnerability.

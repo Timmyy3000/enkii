@@ -23,6 +23,7 @@ import {
 
 export const ENKII_REVIEW_MARKER = "<!-- enkii-review -->";
 export const ENKII_SECURITY_MARKER = "<!-- enkii-security-review -->";
+export const ENKII_POLICY_MARKER = "<!-- enkii-policy-review -->";
 
 export type PostReviewOptions = {
   octokit: Octokit;
@@ -101,8 +102,12 @@ export async function postReviewFromValidated(args: {
 
   const headSha = validated.meta.headSha;
 
-  const kind: "code" | "security" =
-    marker === ENKII_SECURITY_MARKER ? "security" : "code";
+  const kind: "code" | "security" | "policy" =
+    marker === ENKII_SECURITY_MARKER
+      ? "security"
+      : marker === ENKII_POLICY_MARKER
+        ? "policy"
+        : "code";
 
   const summaryBody = buildSummaryBody({
     marker,
@@ -245,8 +250,13 @@ const ENKII_ICON_URL =
   "https://raw.githubusercontent.com/Timmyy3000/enkii/main/assets/enkii-icon.svg";
 const ENKII_REPO_URL = "https://github.com/Timmyy3000/enkii";
 
-function brandedHeader(kind: "code" | "security"): string {
-  const label = kind === "security" ? "security review" : "code review";
+function brandedHeader(kind: "code" | "security" | "policy"): string {
+  const label =
+    kind === "security"
+      ? "security review"
+      : kind === "policy"
+        ? "policy review"
+        : "code review";
   return (
     `<a href="${ENKII_REPO_URL}"><img src="${ENKII_ICON_URL}" height="20" align="left" alt="enkii"></a>` +
     `&nbsp;**enkii** &nbsp;·&nbsp; _${label}_`
@@ -261,7 +271,7 @@ function buildSummaryBody(args: {
   inlinePosted: number;
   spillover: Candidate[];
   unresolved?: Candidate[];
-  kind?: "code" | "security";
+  kind?: "code" | "security" | "policy";
 }): string {
   const {
     marker,
@@ -291,8 +301,12 @@ function buildSummaryBody(args: {
     parts.push(`Reviewed this PR and posted ${totalApproved} comments.`);
   }
 
-  parts.push(`**Mergeability Score:** ${score}/5`);
-  parts.push(buildMergeabilityVerdict(score, totalApproved, incompleteReview));
+  if (kind !== "policy") {
+    parts.push(`**Mergeability Score:** ${score}/5`);
+    parts.push(
+      buildMergeabilityVerdict(score, totalApproved, incompleteReview),
+    );
+  }
 
   if (spillover.length > 0) {
     parts.push("");
@@ -300,9 +314,7 @@ function buildSummaryBody(args: {
       `### Additional notes (${spillover.length} comments above the inline cap)`,
     );
     for (const c of spillover) {
-      parts.push(
-        `- **\`${c.path}:${c.line}\`** — ${formatReviewCommentTitle(c)}`,
-      );
+      parts.push(formatSummarizedFinding(c, kind));
     }
   }
 
@@ -313,13 +325,21 @@ function buildSummaryBody(args: {
       "GitHub could not resolve these findings to changed diff lines, so enkii is preserving them in the summary instead of failing the review.",
     );
     for (const c of unresolved) {
-      parts.push(
-        `- **\`${c.path}:${c.line}\`** — ${formatReviewCommentTitle(c)}`,
-      );
+      parts.push(formatSummarizedFinding(c, kind));
     }
   }
 
   return parts.join("\n\n");
+}
+
+function formatSummarizedFinding(
+  candidate: Candidate,
+  kind: "code" | "security" | "policy",
+): string {
+  if (kind === "policy") {
+    return `#### \`${candidate.path}:${candidate.line}\`\n\n${candidate.body.trim()}`;
+  }
+  return `- **\`${candidate.path}:${candidate.line}\`** — ${formatReviewCommentTitle(candidate)}`;
 }
 
 type PullFile = {
