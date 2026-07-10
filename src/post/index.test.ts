@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { Octokit } from "@octokit/rest";
-import { ENKII_REVIEW_MARKER, postReviewFromValidated } from ".";
+import {
+  ENKII_POLICY_MARKER,
+  ENKII_REVIEW_MARKER,
+  postReviewFromValidated,
+} from ".";
 import type { ValidatedPass } from "../runtime/schemas";
 
 function makeValidated(): ValidatedPass {
@@ -94,5 +98,39 @@ describe("postReviewFromValidated", () => {
     ]);
     expect(review.body).toContain("### Unanchored notes (1)");
     expect(review.body).toContain("Invalid anchor");
+  });
+
+  test("preserves full policy findings without a mergeability verdict", async () => {
+    const createReviewCalls: unknown[] = [];
+    const octokit = {
+      paginate: async () => [{ filename: "src/service.ts", patch: "@@ -10,1 +10,1 @@\n-old\n+new" }],
+      rest: {
+        pulls: {
+          listFiles: async () => undefined,
+          createReview: async (args: unknown) => {
+            createReviewCalls.push(args);
+            return { data: { id: 456 } };
+          },
+        },
+      },
+    } as unknown as Octokit;
+
+    await postReviewFromValidated({
+      validated: makeValidated(),
+      octokit,
+      owner: "Docsyde",
+      repo: "docsyde-backend",
+      prNumber: 294,
+      marker: ENKII_POLICY_MARKER,
+      inlineCap: 0,
+    });
+
+    const review = createReviewCalls[0] as { body: string };
+    expect(review.body).toContain("[P1] Valid anchor");
+    expect(review.body).toContain("This can be posted inline.");
+    expect(review.body).toContain("[P1] Invalid anchor");
+    expect(review.body).toContain("This must be summarized.");
+    expect(review.body).not.toContain("Mergeability Score");
+    expect(review.body).not.toContain("Safe to merge");
   });
 });
