@@ -2,6 +2,22 @@
 
 All notable changes to enkii will be documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Added an opt-in repository policy-review lane configured with `policy_review_skill_path`. The repository-owned prompt is loaded from same-repository PR HEAD, can direct the agent to ordinary engineering guides, and runs concurrently on automatic PR events.
+- Added `policy_review_model` with `review_model` inheritance and the `policy_review_id` action output.
+
+### Changed
+
+- Review execution and GitHub posting now settle per lane so successful code, security, or policy reviews are preserved when another lane fails.
+- Hardened repository skill-path validation against traversal, sibling-prefix escapes, symlinks, directories, and oversized files.
+
+### Security
+
+- Fork-owned policy prompts are skipped without disabling code/security review; the tracking comment explains the skip.
+
 ## [0.2.0-beta.2] — 2026-05-15
 
 ### Fixed
