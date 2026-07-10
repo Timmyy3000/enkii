@@ -1,5 +1,5 @@
 /**
- * Review orchestrator. Used for both code review and security review.
+ * Review orchestrator. Used for code, security, and policy review.
  *
  * Single-pass mode (default): Pass 1 produces post-ready candidates; we
  * synthesize a validated.json by approving everything and the post step runs
@@ -30,10 +30,11 @@ import {
 } from "../../runtime/schemas";
 import { generateReviewCandidatesPrompt } from "../../prompts/candidates";
 import { generateSecurityCandidatesPrompt } from "../../prompts/security-review";
+import { generatePolicyCandidatesPrompt } from "../../prompts/policy-review";
 import { generateReviewValidatorPrompt } from "../../prompts/validator";
 import type { PreparedContext } from "../../prompts/types";
 
-export type ReviewKind = "code" | "security";
+export type ReviewKind = "code" | "security" | "policy";
 
 export type RunReviewOptions = {
   kind: ReviewKind;
@@ -75,7 +76,7 @@ export async function runReview(
 
   await mkdir(promptsDir, { recursive: true });
 
-  const filePrefix = kind === "security" ? "security" : "review";
+  const filePrefix = reviewArtifactPrefix(kind);
   const candidatesPath = join(promptsDir, `${filePrefix}_candidates.json`);
   const validatedPath = join(promptsDir, `${filePrefix}_validated.json`);
 
@@ -83,12 +84,13 @@ export async function runReview(
   const pass1Prompt =
     kind === "security"
       ? generateSecurityCandidatesPrompt(preparedContext)
-      : generateReviewCandidatesPrompt(preparedContext);
+      : kind === "policy"
+        ? generatePolicyCandidatesPrompt(preparedContext)
+        : generateReviewCandidatesPrompt(preparedContext);
 
   let candidatesOutput: unknown;
   const pass1 = await runAgent({
-    systemPrompt:
-      "You are enkii's code review runtime. Use tools to inspect files and submit structured output.",
+    systemPrompt: `You are enkii's ${kind} review runtime. Use tools to inspect files and submit structured output.`,
     userPrompt: pass1Prompt,
     model,
     tools: [
@@ -259,15 +261,25 @@ function parsePassOutput<S extends ZodTypeAny>(
   schema: S,
   kind: ReviewKind,
 ): zInfer<S> {
-  const command = kind === "security" ? "security" : "review";
+  const retry = reviewRetryCommand(kind);
   const result = schema.safeParse(output);
   if (result.success) return result.data;
 
   throw new Error(
     `enkii: ${passName} output failed schema validation. ` +
       `Cause: ${result.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}. ` +
-      `Fix: retry with @enkii /${command}. If repeated, the model may not be honoring the submit tool schema.`,
+      `Fix: ${kind === "policy" ? retry : `retry with @enkii /${retry}`}. ` +
+      `If repeated, the model may not be honoring the submit tool schema.`,
   );
+}
+
+export function reviewArtifactPrefix(kind: ReviewKind): string {
+  return kind === "code" ? "review" : kind;
+}
+
+export function reviewRetryCommand(kind: ReviewKind): string {
+  if (kind === "policy") return "push a new commit or re-run the workflow";
+  return kind === "security" ? "security" : "review";
 }
 
 export async function runCodeReview(args: {
@@ -299,6 +311,23 @@ export async function runSecurityReview(args: {
     preparedContext: args.preparedContext,
     workingDir: args.workingDir,
     model: args.securityModel,
+    promptsDir: args.promptsDir,
+    enableValidator: args.enableValidator,
+  });
+}
+
+export async function runPolicyReview(args: {
+  preparedContext: PreparedContext;
+  workingDir: string;
+  policyModel: string;
+  promptsDir: string;
+  enableValidator?: boolean;
+}): Promise<RunReviewResult> {
+  return runReview({
+    kind: "policy",
+    preparedContext: args.preparedContext,
+    workingDir: args.workingDir,
+    model: args.policyModel,
     promptsDir: args.promptsDir,
     enableValidator: args.enableValidator,
   });
