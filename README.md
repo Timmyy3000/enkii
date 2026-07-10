@@ -34,7 +34,7 @@ Most AI review tools are useful but closed, expensive, or hard to tune. Enkii is
 
 ## Quick start (5 minutes)
 
-Use the moving `v0.2` tag unless you need strict pinning to one exact build. `v0.2` will be moved forward to the latest compatible `0.2.x` release, while exact tags like `v0.2.0-beta.2` stay immutable.
+Use the moving `v0.2` tag unless you need strict pinning to one exact build. `v0.2` will be moved forward to the latest compatible `0.2.x` release, while exact tags like `v0.2.0-beta.4` stay immutable.
 
 ### 1) Add OpenRouter key
 
@@ -128,7 +128,7 @@ You can skip presets and set model IDs directly:
 If you need a fully reproducible rollout, pin an exact release tag instead:
 
 ```yaml
-uses: Timmyy3000/enkii@v0.2.0-beta.2
+uses: Timmyy3000/enkii@v0.2.0-beta.4
 ```
 
 ## Action inputs
