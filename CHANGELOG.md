@@ -9,13 +9,45 @@ All notable changes to enkii will be documented here. Format follows [Keep a Cha
 - OSS project hygiene docs: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, and `SUPPORT.md`.
 - GitHub issue templates (bug report + feature request), issue template config, and PR template.
 - CI workflow (`.github/workflows/ci.yml`) for tests and typecheck on PRs and pushes.
+- Added an opt-in repository policy-review lane configured with `policy_review_skill_path`. The repository-owned prompt is loaded from same-repository PR HEAD, can direct the agent to ordinary engineering guides, and runs concurrently on automatic PR events.
+- Added `policy_review_model` with `review_model` inheritance and the `policy_review_id` action output.
 
 ### Changed
 
 - Dogfood workflow and README setup example no longer include `pull_request_review: submitted` to avoid self-cancel races with `cancel-in-progress: true`.
 - `action.yml` now conditionally masks `OPENROUTER_API_KEY` only when provided, avoiding empty-mask warnings.
 - Pinned `oven-sh/setup-bun` to a full commit SHA for stronger supply-chain safety.
-- README now uses a release tag (`@v0.1.0-alpha.8`) instead of `@main`, and includes compatibility/troubleshooting/versioning guidance.
+- README now uses the compatible `@v0.2` tag instead of `@main`, and includes compatibility, troubleshooting, and versioning guidance.
+- Review execution and GitHub posting now settle per lane so successful code, security, or policy reviews are preserved when another lane fails.
+- Hardened repository skill-path validation against traversal, sibling-prefix escapes, symlinks, directories, and oversized files.
+
+### Security
+
+- Fork-owned policy prompts are skipped without disabling code/security review; the tracking comment explains the skip.
+
+## [0.2.0-beta.2] — 2026-05-15
+
+### Fixed
+
+- Retry review-agent runs that finish without calling `submit_review`, reducing intermittent security/code review failures caused by missed final submit-tool calls.
+
+## [0.2.0-beta.1] — 2026-05-14
+
+### Fixed
+
+- Stopped the enkii GitHub workflow from self-canceling on PR runs.
+
+## [0.1.2] — 2026-05-06
+
+### Fixed
+
+- Added retries around transient GitHub PR review creation failures so posting review results is less likely to fail on brief provider/API hiccups.
+
+## [0.1.1] — 2026-05-06
+
+### Changed
+
+- Prefixed runtime tool logs by review kind so code-review and security-review traces are easier to distinguish in action logs.
 
 ## [0.1.0-alpha.8] — 2026-05-05
 
@@ -131,3 +163,7 @@ First end-to-end alpha. Code-complete on the v0.1 plan; not yet validated agains
 [0.1.0-alpha.3]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.0-alpha.1
+[0.1.1]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.1
+[0.1.2]: https://github.com/Timmyy3000/enkii/releases/tag/v0.1.2
+[0.2.0-beta.1]: https://github.com/Timmyy3000/enkii/releases/tag/v0.2.0-beta.1
+[0.2.0-beta.2]: https://github.com/Timmyy3000/enkii/releases/tag/v0.2.0-beta.2
