@@ -35,3 +35,4 @@
 - Current workspace root is `E:\Users\Oluwatimilehin\Documents\DocSyde\Codebase\main\enkii`.
 - Policy review is opt-in through a repository-relative prompt path such as `.enkii/policy-review.md`.
 - The prompt and referenced guide are intentionally read from the checked-out PR HEAD for same-repository PRs.
+- `bun run format:check` currently fails on 33 untouched baseline TypeScript files; format changed files individually and report the baseline failure without rewriting unrelated files.
