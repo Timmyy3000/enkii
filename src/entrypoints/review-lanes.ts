@@ -9,6 +9,24 @@ export type ReviewDispatchCommand =
   | "status"
   | "skip";
 
+export function isForkPullRequestPayload(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object") return false;
+  const pr = (payload as Record<string, unknown>).pull_request;
+  if (!pr || typeof pr !== "object") return false;
+  const pullRequest = pr as Record<string, unknown>;
+  const head = pullRequest.head as Record<string, unknown> | undefined;
+  const base = pullRequest.base as Record<string, unknown> | undefined;
+  const headRepo = head?.repo as Record<string, unknown> | undefined;
+  const baseRepo = base?.repo as Record<string, unknown> | undefined;
+  const headName = headRepo?.full_name;
+  const baseName = baseRepo?.full_name;
+
+  if (typeof headName === "string" && typeof baseName === "string") {
+    return headName.toLowerCase() !== baseName.toLowerCase();
+  }
+  return Boolean(headRepo?.fork);
+}
+
 export function selectReviewKinds(args: {
   command: ReviewDispatchCommand;
   runSecurity: boolean;
