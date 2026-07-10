@@ -15,6 +15,7 @@ All notable changes to enkii will be documented here. Format follows [Keep a Cha
 
 - Review execution and GitHub posting now settle per lane so successful code, security, or policy reviews are preserved when another lane fails.
 - Hardened repository skill-path validation against traversal, sibling-prefix escapes, symlinks, directories, and oversized files.
+- Updated the dogfood workflow to the Node 24-compatible `actions/checkout@v7` release and pinned its immutable commit SHA.
 
 ### Security
 
