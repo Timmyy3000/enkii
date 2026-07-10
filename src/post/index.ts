@@ -303,7 +303,9 @@ function buildSummaryBody(args: {
 
   if (kind !== "policy") {
     parts.push(`**Mergeability Score:** ${score}/5`);
-    parts.push(buildMergeabilityVerdict(score, totalApproved, incompleteReview));
+    parts.push(
+      buildMergeabilityVerdict(score, totalApproved, incompleteReview),
+    );
   }
 
   if (spillover.length > 0) {

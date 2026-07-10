@@ -3,7 +3,7 @@
 /**
  * Single unified entrypoint. Handles the full enkii pipeline in one process:
  * env validation → context parse → trigger detection → dispatch → run reviews
- * (code + security in parallel when applicable) → post.
+ * (code + security + configured policy review in parallel) → post.
  *
  * Inputs (env):
  *   - OPENROUTER_API_KEY        (required)
@@ -12,6 +12,8 @@
  *   - SECURITY_MODEL            (default "@preset/enkii")
  *   - REVIEW_SKILL_PATH         (optional consumer override)
  *   - SECURITY_SKILL_PATH       (optional consumer override)
+ *   - POLICY_REVIEW_SKILL_PATH  (optional repository-owned policy prompt; empty disables)
+ *   - POLICY_REVIEW_MODEL       (empty inherits REVIEW_MODEL)
  *   - ENABLE_VALIDATOR          ("true" | "false", default "false") — Pass 2
  *   - RUN_SECURITY              ("true" | "false", default "true")  — auto-run security on PR events
  *   - GITHUB_ACTION_PATH        (set by runner; bundled skills live here)
@@ -28,16 +30,19 @@ import { parseGitHubContext, isEntityContext } from "../github/context";
 import { fetchPRBranchData } from "../github/data/pr-fetcher";
 import { computeReviewArtifacts } from "../github/data/review-artifacts";
 import { checkoutPullRequestHead } from "../github/data/pr-checkout";
-import { loadSkill } from "../skills/loader";
+import { loadRequiredRepositorySkill, loadSkill } from "../skills/loader";
 import { shouldTriggerTag, prepareTagExecution } from "../tag";
 import {
   runCodeReview,
+  runPolicyReview,
   runSecurityReview,
+  type ReviewKind,
   type RunReviewResult,
 } from "../tag/commands/review";
 import {
   postReviewFromValidated,
   ENKII_REVIEW_MARKER,
+  ENKII_POLICY_MARKER,
   ENKII_SECURITY_MARKER,
 } from "../post";
 import { postHelpReply } from "../post/help";
@@ -46,6 +51,11 @@ import { fetchEnkiiComment } from "../github/operations/comments/fetch-enkii-com
 import { updateEnkiiComment } from "../github/operations/comments/update-enkii-comment";
 import { updateCommentBody } from "../github/operations/comment-logic";
 import { GITHUB_SERVER_URL } from "../github/api/config";
+import {
+  type ReviewLane,
+  selectReviewKinds,
+  settleReviewLanes,
+} from "./review-lanes";
 
 function envFlag(name: string, defaultValue: boolean): boolean {
   const raw = process.env[name];
@@ -110,12 +120,49 @@ async function markTrackingCommentFailed(args: {
       body: nextBody,
       isPullRequestReviewComment: fetched.isPRReviewComment,
     });
-    console.log(`enkii: updated tracking comment ${trackingCommentId} with failure details`);
+    console.log(
+      `enkii: updated tracking comment ${trackingCommentId} with failure details`,
+    );
   } catch (updateError) {
     console.warn(
       `enkii: failed to update tracking comment ${trackingCommentId} after error: ${
         updateError instanceof Error ? updateError.message : String(updateError)
       }`,
+    );
+  }
+}
+
+async function markTrackingCommentPolicySkipped(args: {
+  octokit: ReturnType<typeof createOctokit>;
+  context: ReturnType<typeof parseGitHubContext>;
+  trackingCommentId?: number;
+}): Promise<void> {
+  const { octokit, context, trackingCommentId } = args;
+  if (!trackingCommentId || !isEntityContext(context)) return;
+
+  try {
+    const { owner, repo } = context.repository;
+    const fetched = await fetchEnkiiComment(octokit, {
+      owner,
+      repo,
+      commentId: trackingCommentId,
+      isPullRequestReviewCommentEvent:
+        context.eventName === "pull_request_review_comment",
+    });
+    const notice =
+      "> Policy review was skipped because the configured prompt would be loaded from a fork-owned PR HEAD. Code and security review continue normally.";
+    const currentBody = fetched.comment.body ?? "";
+    if (currentBody.includes(notice)) return;
+    await updateEnkiiComment(octokit.rest, {
+      owner,
+      repo,
+      commentId: trackingCommentId,
+      body: `${currentBody.trim()}\n\n${notice}`.trim(),
+      isPullRequestReviewComment: fetched.isPRReviewComment,
+    });
+  } catch (error) {
+    console.warn(
+      `enkii: failed to add the fork policy-skip notice: ${getErrorMessage(error)}`,
     );
   }
 }
@@ -130,8 +177,10 @@ async function run(): Promise<void> {
 
     const reviewModel = process.env.REVIEW_MODEL || "@preset/enkii";
     const securityModel = process.env.SECURITY_MODEL || "@preset/enkii";
+    const policyModel = process.env.POLICY_REVIEW_MODEL || reviewModel;
     const reviewSkillPath = process.env.REVIEW_SKILL_PATH || "";
     const securitySkillPath = process.env.SECURITY_SKILL_PATH || "";
+    const policySkillPath = process.env.POLICY_REVIEW_SKILL_PATH || "";
     const enableValidator = envFlag("ENABLE_VALIDATOR", false);
     const runSecurity = envFlag("RUN_SECURITY", true);
 
@@ -204,16 +253,27 @@ async function run(): Promise<void> {
       );
     }
 
-    const wantCode =
-      dispatch.command === "auto" ||
-      dispatch.command === "review" ||
-      dispatch.command === "benchmark";
-    const wantSecurity =
-      dispatch.command === "security" ||
-      (dispatch.command === "auto" && runSecurity);
+    const isForkPR = detectForkPR(context);
+    const selection = selectReviewKinds({
+      command: dispatch.command,
+      runSecurity,
+      policySkillPath,
+      isForkPR,
+    });
     const benchmarkMode = dispatch.command === "benchmark";
 
-    if (!wantCode && !wantSecurity) {
+    if (selection.policySkippedReason === "fork_prompt") {
+      console.warn(
+        "enkii: policy review skipped because its prompt would come from fork-owned PR HEAD.",
+      );
+      await markTrackingCommentPolicySkipped({
+        octokit,
+        context,
+        trackingCommentId,
+      });
+    }
+
+    if (selection.kinds.length === 0) {
       console.log("enkii: nothing to run for this dispatch.");
       return;
     }
@@ -256,8 +316,6 @@ async function run(): Promise<void> {
       );
     }
 
-    const isForkPR = detectForkPR(context);
-
     const buildContext = (
       skillContent: string,
       includeSuggestions: boolean,
@@ -280,74 +338,115 @@ async function run(): Promise<void> {
       },
     });
 
-    const tasks: Promise<RunReviewResult>[] = [];
+    const selectedKinds = new Set(selection.kinds);
+    const lanes: ReviewLane<RunReviewResult, ReviewKind>[] = [];
 
-    if (wantCode) {
-      const skill = await loadSkill({
-        kind: "review",
-        overridePath: reviewSkillPath,
-        actionPath,
-        workspacePath,
-        isForkPR,
+    if (selectedKinds.has("code")) {
+      lanes.push({
+        kind: "code",
+        execute: async () => {
+          const skill = await loadSkill({
+            kind: "review",
+            overridePath: reviewSkillPath,
+            actionPath,
+            workspacePath,
+            isForkPR,
+          });
+          logSkill("review", reviewSkillPath, skill);
+          return runCodeReview({
+            preparedContext: buildContext(skill.content, true),
+            workingDir: workspacePath,
+            reviewModel,
+            promptsDir,
+            enableValidator,
+          });
+        },
       });
-      logSkill("review", reviewSkillPath, skill);
-      tasks.push(
-        runCodeReview({
-          preparedContext: buildContext(skill.content, true),
-          workingDir: workspacePath,
-          reviewModel,
-          promptsDir,
-          enableValidator,
-        }),
-      );
     }
 
-    if (wantSecurity) {
-      const skill = await loadSkill({
-        kind: "security-review",
-        overridePath: securitySkillPath,
-        actionPath,
-        workspacePath,
-        isForkPR,
+    if (selectedKinds.has("security")) {
+      lanes.push({
+        kind: "security",
+        execute: async () => {
+          const skill = await loadSkill({
+            kind: "security-review",
+            overridePath: securitySkillPath,
+            actionPath,
+            workspacePath,
+            isForkPR,
+          });
+          logSkill("security", securitySkillPath, skill);
+          return runSecurityReview({
+            preparedContext: buildContext(skill.content, false),
+            workingDir: workspacePath,
+            securityModel,
+            promptsDir,
+            enableValidator,
+          });
+        },
       });
-      logSkill("security", securitySkillPath, skill);
-      tasks.push(
-        runSecurityReview({
-          preparedContext: buildContext(skill.content, false),
-          workingDir: workspacePath,
-          securityModel,
-          promptsDir,
-          enableValidator,
-        }),
-      );
+    }
+
+    if (selectedKinds.has("policy")) {
+      lanes.push({
+        kind: "policy",
+        execute: async () => {
+          const skill = await loadRequiredRepositorySkill({
+            skillPath: policySkillPath,
+            workspacePath,
+            label: "policy review skill",
+          });
+          console.log(
+            `enkii: loaded policy review prompt from PR HEAD at ${skill.source}`,
+          );
+          return runPolicyReview({
+            preparedContext: buildContext(skill.content, false),
+            workingDir: workspacePath,
+            policyModel,
+            promptsDir,
+            enableValidator,
+          });
+        },
+      });
     }
 
     console.log(
-      `enkii: running ${tasks.length} review(s) in parallel ` +
+      `enkii: running ${lanes.length} review(s) in parallel ` +
         `(validator ${enableValidator ? "on" : "off"})`,
     );
-    const results = await Promise.all(tasks);
-
-    for (const result of results) {
-      const marker =
-        result.kind === "security"
-          ? ENKII_SECURITY_MARKER
-          : ENKII_REVIEW_MARKER;
-      const post = await postReviewFromValidated({
+    const restOctokit = octokit.rest;
+    const settled = await settleReviewLanes(lanes, async (result) =>
+      postReviewFromValidated({
         validated: result.validated,
-        octokit: octokit.rest,
+        octokit: restOctokit,
         owner,
         repo,
         prNumber: context.entityNumber,
-        marker,
+        marker: markerForKind(result.kind),
         inlineCap: 20,
-      });
+      }),
+    );
+
+    for (const entry of settled.posted) {
+      const { kind, post } = entry;
       console.log(
-        `enkii: posted ${result.kind} review #${post.reviewId} — ` +
+        `enkii: posted ${kind} review #${post.reviewId} — ` +
           `${post.inlinePosted} inline, ${post.summarized} summarized, ` +
           `${post.totalApproved} approved total.`,
       );
-      core.setOutput(`${result.kind}_review_id`, String(post.reviewId));
+      core.setOutput(`${kind}_review_id`, String(post.reviewId));
+    }
+
+    if (settled.errors.length > 0) {
+      throw new Error(
+        `enkii: ${settled.errors.length} review lane(s) failed after successful lanes were preserved: ` +
+          settled.errors
+            .map(
+              (failure) =>
+                `${failure.kind} ${failure.phase}: ${getErrorMessage(failure.error)}`,
+            )
+            .join("; "),
+      );
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -362,6 +461,16 @@ async function run(): Promise<void> {
     core.setFailed(`enkii failed: ${errorMessage}`);
     process.exit(1);
   }
+}
+
+function markerForKind(kind: ReviewKind): string {
+  if (kind === "security") return ENKII_SECURITY_MARKER;
+  if (kind === "policy") return ENKII_POLICY_MARKER;
+  return ENKII_REVIEW_MARKER;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function logSkill(
