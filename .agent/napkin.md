@@ -5,6 +5,7 @@
 |------|--------|-----------------|--------------------|
 | 2026-05-05 | self | Used `New-Item` to create `.agent/napkin.md` even though manual file edits should use `apply_patch`. | Use `apply_patch` for creating or editing repo files; shell commands are fine only for inspection or filesystem setup. |
 | 2026-05-05 | self | Tried `bun -e` with a JavaScript template literal inside PowerShell double quotes; PowerShell consumed the backticks and broke the script. | For PowerShell `bun -e` smoke tests, avoid JS template literals or put code in a real script file. |
+| 2026-07-10 | self | Passed a remote PR branch name to `forest add` without first creating the local tracking branch, so Forest created a new `forest/...` branch from the default base. | For an existing remote PR branch, create the local tracking branch first, then pass it with `forest add -b <branch>`. |
 | 2026-07-10 | self | Treated the napkin in the new worktree as absent because hidden files were omitted from discovery output, then replaced its contents. | Check `Test-Path` and read the worktree napkin directly before patching; always append to existing notes. |
 | 2026-07-10 | self | Added unescaped Markdown backticks inside a TypeScript template literal, causing parser errors. | Escape every Markdown backtick inside prompt template literals and run the focused prompt test immediately. |
 
