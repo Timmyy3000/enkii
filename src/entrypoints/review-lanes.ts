@@ -64,7 +64,8 @@ export async function settleReviewLanes<
   executionSettled.forEach((result, index) => {
     const lane = lanes[index]!;
     if (result.status === "fulfilled") completed.push(result.value);
-    else errors.push({ kind: lane.kind, phase: "execute", error: result.reason });
+    else
+      errors.push({ kind: lane.kind, phase: "execute", error: result.reason });
   });
 
   const postSettled = await Promise.allSettled(
