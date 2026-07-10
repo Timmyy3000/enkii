@@ -103,7 +103,9 @@ describe("postReviewFromValidated", () => {
   test("preserves full policy findings without a mergeability verdict", async () => {
     const createReviewCalls: unknown[] = [];
     const octokit = {
-      paginate: async () => [{ filename: "src/service.ts", patch: "@@ -10,1 +10,1 @@\n-old\n+new" }],
+      paginate: async () => [
+        { filename: "src/service.ts", patch: "@@ -10,1 +10,1 @@\n-old\n+new" },
+      ],
       rest: {
         pulls: {
           listFiles: async () => undefined,
@@ -132,5 +134,48 @@ describe("postReviewFromValidated", () => {
     expect(review.body).toContain("This must be summarized.");
     expect(review.body).not.toContain("Mergeability Score");
     expect(review.body).not.toContain("Safe to merge");
+  });
+
+  test("preserves full policy findings in unanchored and summary-only retry paths", async () => {
+    const createReviewCalls: Array<{ body: string; comments: unknown[] }> = [];
+    const octokit = {
+      paginate: async () => [
+        {
+          filename: "src/service.ts",
+          patch: "@@ -10,2 +10,3 @@\n context\n+added\n context",
+        },
+      ],
+      rest: {
+        pulls: {
+          listFiles: async () => undefined,
+          createReview: async (args: { body: string; comments: unknown[] }) => {
+            createReviewCalls.push(args);
+            if (createReviewCalls.length === 1) {
+              const error = new Error("line could not be resolved");
+              Object.assign(error, { status: 422 });
+              throw error;
+            }
+            return { data: { id: 789 } };
+          },
+        },
+      },
+    } as unknown as Octokit;
+
+    await postReviewFromValidated({
+      validated: makeValidated(),
+      octokit,
+      owner: "Docsyde",
+      repo: "docsyde-backend",
+      prNumber: 294,
+      marker: ENKII_POLICY_MARKER,
+      inlineCap: 20,
+    });
+
+    expect(createReviewCalls).toHaveLength(2);
+    const retry = createReviewCalls[1]!;
+    expect(retry.comments).toEqual([]);
+    expect(retry.body).toContain("This can be posted inline.");
+    expect(retry.body).toContain("This must be summarized.");
+    expect(retry.body).not.toContain("Mergeability Score");
   });
 });

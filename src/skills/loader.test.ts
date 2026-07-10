@@ -14,13 +14,20 @@ async function workspace(): Promise<string> {
 }
 
 afterEach(async () => {
-  await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(
+    tempRoots
+      .splice(0)
+      .map((root) => rm(root, { recursive: true, force: true })),
+  );
 });
 
 describe("loadRequiredRepositorySkill", () => {
   test("loads a repository-owned policy prompt", async () => {
     const root = await workspace();
-    await writeFile(join(root, ".enkii", "policy-review.md"), "Read docs/STYLE.md");
+    await writeFile(
+      join(root, ".enkii", "policy-review.md"),
+      "Read docs/STYLE.md",
+    );
 
     const loaded = await loadRequiredRepositorySkill({
       skillPath: ".enkii/policy-review.md",
@@ -37,7 +44,11 @@ describe("loadRequiredRepositorySkill", () => {
     async (skillPath) => {
       const root = await workspace();
       await expect(
-        loadRequiredRepositorySkill({ skillPath, workspacePath: root, label: "policy review" }),
+        loadRequiredRepositorySkill({
+          skillPath,
+          workspacePath: root,
+          label: "policy review",
+        }),
       ).rejects.toBeInstanceOf(SkillLoadError);
     },
   );
@@ -69,11 +80,47 @@ describe("loadRequiredRepositorySkill", () => {
     ).rejects.toBeInstanceOf(SkillLoadError);
   });
 
+  test("rejects absolute and missing paths", async () => {
+    const root = await workspace();
+    await expect(
+      loadRequiredRepositorySkill({
+        skillPath: join(root, ".enkii", "policy-review.md"),
+        workspacePath: root,
+        label: "policy review",
+      }),
+    ).rejects.toBeInstanceOf(SkillLoadError);
+    await expect(
+      loadRequiredRepositorySkill({
+        skillPath: ".enkii/missing.md",
+        workspacePath: root,
+        label: "policy review",
+      }),
+    ).rejects.toThrow("not found");
+  });
+
+  test("rejects oversized prompt files", async () => {
+    const root = await workspace();
+    await writeFile(
+      join(root, ".enkii", "policy-review.md"),
+      "x".repeat(256 * 1024 + 1),
+    );
+    await expect(
+      loadRequiredRepositorySkill({
+        skillPath: ".enkii/policy-review.md",
+        workspacePath: root,
+        label: "policy review",
+      }),
+    ).rejects.toThrow("cap is 256 KB");
+  });
+
   const symlinkTest = process.platform === "win32" ? test.skip : test;
   symlinkTest("rejects symlinked prompt files", async () => {
     const root = await workspace();
     await writeFile(join(root, "policy-target.md"), "target");
-    await symlink(join(root, "policy-target.md"), join(root, ".enkii", "policy-review.md"));
+    await symlink(
+      join(root, "policy-target.md"),
+      join(root, ".enkii", "policy-review.md"),
+    );
 
     await expect(
       loadRequiredRepositorySkill({

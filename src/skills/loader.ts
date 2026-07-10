@@ -60,10 +60,7 @@ export async function loadRequiredRepositorySkill(options: {
   if (!trimmedPath) {
     throw new SkillLoadError(`enkii: ${label} path is empty.`);
   }
-  if (
-    isAbsolute(trimmedPath) ||
-    trimmedPath.split(/[\\/]+/).includes("..")
-  ) {
+  if (isAbsolute(trimmedPath) || trimmedPath.split(/[\\/]+/).includes("..")) {
     throw invalidRepositoryPath(label, skillPath);
   }
 
