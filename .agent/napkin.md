@@ -36,3 +36,4 @@
 - Policy review is opt-in through a repository-relative prompt path such as `.enkii/policy-review.md`.
 - The prompt and referenced guide are intentionally read from the checked-out PR HEAD for same-repository PRs.
 - `bun run format:check` currently fails on 33 untouched baseline TypeScript files; format changed files individually and report the baseline failure without rewriting unrelated files.
+- Detect fork PRs by comparing head/base repository identity, not `head.repo.fork`; a repository can itself be a fork while receiving a same-repository PR.
