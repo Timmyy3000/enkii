@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en" data-theme="luxury">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Enkii Policy Review — Implementation Plan</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box} :where(.grid,.flex)>*{min-width:0}
+    :where(p,h1,h2,h3,li,td,th,.badge){overflow-wrap:anywhere}
+    .eyebrow{letter-spacing:.18em;text-transform:uppercase;font-size:.72rem;font-weight:800;opacity:.7}
+    .path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.82rem}
+    .section-anchor{scroll-margin-top:1rem}
+    .decision-card:has(input:checked){outline:2px solid var(--color-primary);outline-offset:2px}
+    h1,h2{line-height:1.18;padding-bottom:.12em}
+    .btn{min-height:3rem;height:auto;white-space:normal;line-height:1.25;padding-top:.65rem;padding-bottom:.65rem}
+  </style>
+</head>
+<body class="min-h-screen bg-base-200 text-base-content">
+  <main class="mx-auto max-w-7xl p-4 sm:p-7 lg:p-10">
+    <section class="hero rounded-box bg-base-100 shadow-xl">
+      <div class="hero-content w-full flex-col items-start py-10 lg:py-14">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="badge badge-primary badge-soft">Kickoff plan</span>
+          <span class="badge badge-success badge-soft">Direction aligned</span>
+          <span class="badge badge-outline">Feature</span>
+        </div>
+        <p class="eyebrow mt-5">Enkii · third review lane</p>
+        <h1 class="max-w-4xl text-4xl font-black tracking-tight sm:text-6xl">Repository-defined policy review</h1>
+        <p class="max-w-3xl text-lg opacity-80">A repository-owned prompt tells Enkii how to inspect the PR, which engineering guide to read, and how the team wants findings reported. It runs automatically beside code and security review.</p>
+        <div class="stats stats-vertical mt-6 w-full bg-base-200 shadow sm:stats-horizontal">
+          <div class="stat"><div class="stat-title">Prompt source</div><div class="stat-value text-2xl">PR HEAD</div><div class="stat-desc">Same-repository PRs</div></div>
+          <div class="stat"><div class="stat-title">Trigger surface</div><div class="stat-value text-2xl">Automatic</div><div class="stat-desc">No slash command in v1</div></div>
+          <div class="stat"><div class="stat-title">Runtime</div><div class="stat-value text-2xl">Concurrent</div><div class="stat-desc">Code + security + policy</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-anchor mt-8 grid gap-5 lg:grid-cols-2" id="boundary">
+      <article class="card card-border bg-base-100"><div class="card-body">
+        <p class="eyebrow">Product boundary</p><h2 class="card-title text-2xl">Prompt, not policy storage</h2>
+        <p>The configured file is the policy agent's complete instruction layer. It can say which guide to read, which risk profile applies, what counts as a finding, and how citations should look.</p>
+        <div class="mt-3 rounded-box bg-base-200 p-4">
+          <div class="path font-bold">.enkii/policy-review.md</div>
+          <div class="mt-2 text-sm opacity-75">“Read docs/ENGINEERING_STYLE.md. Apply the backend risk profile. Cite findings using our team convention…”</div>
+        </div>
+      </div></article>
+      <article class="card card-border bg-base-100"><div class="card-body">
+        <p class="eyebrow">Team ownership</p><h2 class="card-title text-2xl">Guide stays discoverable</h2>
+        <p>The engineering guide remains wherever engineers already expect it. Enkii does not ingest it through a special action input or force a universal rule-ID format.</p>
+        <div class="mt-3 rounded-box bg-base-200 p-4">
+          <div class="path font-bold">docs/ENGINEERING_STYLE.md</div>
+          <div class="mt-2 text-sm opacity-75">Ordinary repository documentation, read by the policy agent through existing read-only tools.</div>
+        </div>
+      </div></article>
+    </section>
+
+    <section class="section-anchor mt-8 card card-border bg-base-100" id="flow"><div class="card-body">
+      <p class="eyebrow">Runtime topology</p><h2 class="card-title text-2xl">One PR event, three independent lanes</h2>
+      <p class="opacity-75">The policy prompt is loaded after PR HEAD is checked out. Its referenced guide is not preloaded; the agent reads it when following the prompt.</p>
+      <div class="mermaid mt-4 overflow-x-auto rounded-box bg-base-200 p-4">
+flowchart TD
+  E["Supported pull_request event"] --> H["Checkout PR HEAD"]
+  H --> A["Compute shared diff and PR artifacts"]
+  A --> C["Code review lane"]
+  A --> S["Security review lane<br />when enabled"]
+  A --> P["Policy review lane<br />when prompt path configured"]
+  P --> L["Load .enkii/policy-review.md"]
+  L --> G["Agent reads referenced guide<br />through read-only tools"]
+  C --> PC["Code PR Review"]
+  S --> PS["Security PR Review"]
+  G --> PP["Policy PR Review"]
+      </div>
+    </div></section>
+
+    <section class="section-anchor mt-8" id="scope">
+      <p class="eyebrow">Scope control</p><h2 class="text-3xl font-bold">What v1 includes</h2>
+      <div class="mt-4 grid gap-5 lg:grid-cols-2">
+        <div class="card card-border bg-base-100"><div class="card-body">
+          <h3 class="card-title text-success">In scope</h3>
+          <ul class="list-disc space-y-2 pl-5">
+            <li>Optional policy prompt path; path presence enables the lane</li>
+            <li>Optional policy model inheriting the code-review model</li>
+            <li>HEAD-sourced prompt for same-repository PRs</li>
+            <li>Automatic concurrent execution and independent posting</li>
+            <li>Shared candidate/validator contracts</li>
+            <li>Policy-specific artifacts, marker, label, and output ID</li>
+            <li>Safe path validation and explicit fork behavior</li>
+          </ul>
+        </div></div>
+        <div class="card card-border bg-base-100"><div class="card-body">
+          <h3 class="card-title opacity-70">Out of scope</h3>
+          <ul class="list-disc space-y-2 pl-5 opacity-80">
+            <li>No <span class="path">/policy</span> or <span class="path">/style</span> command</li>
+            <li>No cross-lane deduplication or arbitration</li>
+            <li>No hard-coded rule-ID or citation schema</li>
+            <li>No direct style-guide action input</li>
+            <li>No mechanical merge blocking</li>
+            <li>No universal policy methodology owned by Enkii</li>
+          </ul>
+        </div></div>
+      </div>
+    </section>
+
+    <section class="section-anchor mt-8 card card-border bg-base-100" id="dispatch"><div class="card-body">
+      <p class="eyebrow">Selection contract</p><h2 class="card-title text-2xl">Automatic-only means exactly one dispatch path</h2>
+      <div class="overflow-x-auto rounded-box border border-base-content/10">
+        <table class="table table-zebra">
+          <thead><tr><th>Dispatch</th><th>Policy path configured</th><th>Policy selected?</th></tr></thead>
+          <tbody>
+            <tr><td class="path">auto</td><td>Yes</td><td><span class="badge badge-success">Yes</span></td></tr>
+            <tr><td class="path">auto</td><td>No</td><td><span class="badge badge-ghost">No</span></td></tr>
+            <tr><td class="path">review / benchmark / security</td><td>Either</td><td><span class="badge badge-ghost">No</span></td></tr>
+            <tr><td class="path">help / status / skip</td><td>Either</td><td><span class="badge badge-ghost">No</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-sm opacity-70">Command parsing and tag dispatch remain unchanged in v1; policy selection happens downstream only for <span class="path">dispatch.command === "auto"</span>.</p>
+    </div></section>
+
+    <section class="section-anchor mt-8" id="phases">
+      <p class="eyebrow">Implementation map</p><h2 class="text-3xl font-bold">Four phases with testable exits</h2>
+      <div class="mt-4 overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+        <table class="table table-zebra">
+          <thead><tr><th>Phase</th><th>Work</th><th>Primary files</th><th>Exit criteria</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge badge-primary">1</span> Contract</td><td>Add action inputs/output and define empty-path enablement plus model inheritance.</td><td class="path">action.yml<br>README.md</td><td>Disabled consumers remain behaviorally identical.</td></tr>
+            <tr><td><span class="badge badge-primary">2</span> Runtime</td><td>Generalize review kinds and prompt selection; add policy prompt generation and collision-free artifacts.</td><td class="path">src/tag/commands/review.ts<br>src/prompts/policy-review.ts<br>src/prompts/types.ts</td><td>Policy uses the common agent/validator path and can read referenced files.</td></tr>
+            <tr><td><span class="badge badge-primary">3</span> Orchestration</td><td>Harden HEAD prompt loading, select policy only for auto dispatch, and independently settle loading, execution, validation, and posting.</td><td class="path">src/entrypoints/main.ts<br>src/skills/loader.ts<br>src/post/index.ts</td><td>A failed execution or GitHub post cannot prevent later successful lanes from posting; policy has no bundled fallback.</td></tr>
+            <tr><td><span class="badge badge-primary">4</span> Hardening</td><td>Add dispatch-matrix, every final-rendering path, execution/posting partial-success, fork, adversarial-path, docs, and dogfood coverage.</td><td class="path">*.test.ts<br>README.md<br>CHANGELOG.md</td><td>All checks pass and one representative repository configuration is documented.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section-anchor mt-8 grid gap-5 lg:grid-cols-2" id="acceptance">
+      <article class="card card-border bg-base-100"><div class="card-body">
+        <p class="eyebrow">Acceptance focus</p><h2 class="card-title text-2xl">Observable behavior</h2>
+        <ul class="list-disc space-y-2 pl-5">
+          <li>Empty prompt path means no policy task and no policy review.</li>
+          <li>Configured same-repo PRs use the prompt present at PR HEAD.</li>
+          <li>The agent can read any repository file allowed by existing read-only tools.</li>
+          <li>Prompt-defined citations survive unchanged in candidate bodies.</li>
+          <li>Prompt-defined citations and semantic wording survive the final GitHub formatting envelope.</li>
+          <li>Complete finding bodies survive spillover, unanchored, and summary-only retry paths.</li>
+          <li>Policy reviews omit Enkii's generic mergeability score and verdict.</li>
+          <li>Policy output uses its own marker and <span class="path">policy_review_id</span>.</li>
+          <li>Code and security results are unchanged when policy is absent.</li>
+          <li>Successful lanes still post when another lane fails during loading, execution, validation, or GitHub posting.</li>
+        </ul>
+      </div></article>
+      <article class="card card-border bg-base-100"><div class="card-body">
+        <p class="eyebrow">Validation</p><h2 class="card-title text-2xl">Concrete checks</h2>
+        <div class="mockup-code mt-2 text-sm">
+          <pre data-prefix="$"><code>bun test</code></pre>
+          <pre data-prefix="$"><code>bun run typecheck</code></pre>
+          <pre data-prefix="$"><code>bun run format:check</code></pre>
+        </div>
+        <p class="mt-3 text-sm opacity-75">Focused unit coverage: boundary-safe containment, symlink/directory/traversal rejection, prompt routing, dispatch matrix, model inheritance, artifact prefixes, execution/posting partial success, inline/spillover/unanchored/summary-only rendering, disabled behavior, and fork behavior.</p>
+      </div></article>
+    </section>
+
+    <section class="section-anchor mt-8" id="risks">
+      <p class="eyebrow">Risk register</p><h2 class="text-3xl font-bold">Known tradeoffs, made explicit</h2>
+      <div class="mt-4 overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+        <table class="table">
+          <thead><tr><th>Risk</th><th>Impact</th><th>Mitigation / stance</th></tr></thead>
+          <tbody>
+            <tr><td>Self-amending policy</td><td>A PR can change the prompt or guide used to review itself.</td><td>Intentional HEAD behavior. Make changes visible in the diff and recommend CODEOWNERS for policy files.</td></tr>
+            <tr><td>Fork-controlled prompt</td><td>Untrusted contributors could redefine agent instructions.</td><td>Recommended v1: skip policy only, continue other lanes, leave the policy output empty, and explain the skip in the tracking comment.</td></tr>
+            <tr><td>Flexible output</td><td>Enkii cannot mechanically guarantee a team's citation convention.</td><td>Prompt owns the convention; shared schema still constrains paths, lines, severities, and bodies.</td></tr>
+            <tr><td>Cost and latency</td><td>A third agent, and optionally validator, adds spend and may become the slowest lane.</td><td>Opt-in by non-empty path; run concurrently; document model inheritance and validator cost.</td></tr>
+            <tr><td>Hard-coded two-lane UI</td><td>Policy could inherit incorrect “code review” labels or merge language.</td><td>Generalize review-kind presentation and add regression tests for all three labels.</td></tr>
+            <tr><td>One lane fails</td><td>Current <span class="path">Promise.all</span> behavior can prevent every completed review from posting.</td><td>Settle lanes independently, post successes, then fail the action with lane-specific diagnostics.</td></tr>
+            <tr><td>One GitHub post fails</td><td>Current sequential posting aborts before later lanes post.</td><td>Independently settle every post, retain successful output IDs, then report aggregated lane errors.</td></tr>
+            <tr><td>Fallback truncates policy</td><td>Current spillover/unanchored summaries keep only the first line.</td><td>Policy-specific fallback rendering preserves full finding bodies and citations; omit generic mergeability scoring.</td></tr>
+            <tr><td>Path escape or symlink</td><td>String-prefix containment and <span class="path">stat()</span> are insufficient.</td><td>Use a boundary-safe relative check plus symlink-aware inspection; cover sibling-prefix and symlink cases.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section-anchor mt-8 grid gap-5 lg:grid-cols-2" id="decisions">
+      <article class="card card-border bg-base-100"><div class="card-body"><p class="eyebrow">Resolved decision</p><h2 class="card-title">Fork PR behavior</h2>
+        <div class="alert alert-success"><span><strong>Skip only the policy lane</strong> when the configured prompt would come from fork-owned HEAD.</span></div>
+        <p>Code and security continue, <span class="path">policy_review_id</span> remains empty, the tracking comment explains the skip, and an otherwise successful run does not fail. There is no bundled policy fallback.</p>
+      </div></article>
+      <article class="card card-border bg-base-100"><div class="card-body"><p class="eyebrow">Resolved decision</p><h2 class="card-title">Public action contract</h2>
+        <div class="alert alert-success"><span><strong class="path">policy_review_skill_path</strong> accurately communicates that the configured Markdown is the agent's prompt/skill, not the engineering guide.</span></div>
+        <p>The companion <span class="path">policy_review_model</span> inherits <span class="path">review_model</span> when empty. No separate boolean is needed because path presence is the opt-in switch.</p>
+      </div></article>
+    </section>
+
+    <section class="mt-8 alert alert-info alert-vertical sm:alert-horizontal">
+      <div><h2 class="font-bold">Approval gate</h2><p>All product decisions are resolved. Annotate anything you want changed or approve the plan to begin implementation.</p></div>
+      <button class="btn btn-primary" data-lavish-action onclick="window.lavish.queuePrompt('I approve the policy review implementation plan with the selected decisions. Proceed through implementation and PR readiness.',{tag:'approval',text:'Approve plan',queueKey:'plan-approval',element:this});">Queue plan approval</button>
+    </section>
+  </main>
+
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+    const darkQuery=window.matchMedia("(prefers-color-scheme: dark)");
+    const diagrams=[...document.querySelectorAll('.mermaid')].map(el=>({el,src:el.textContent}));
+    async function render(){const theme=darkQuery.matches?'dark':'default';mermaid.initialize({startOnLoad:false,theme,securityLevel:'strict'});for(const d of diagrams){d.el.removeAttribute('data-processed');d.el.textContent=d.src}await mermaid.run({nodes:diagrams.map(d=>d.el)})}
+    if(document.readyState==='complete') render(); else window.addEventListener('load',render,{once:true});
+    darkQuery.addEventListener('change',render);
+  </script>
+</body>
+</html>
