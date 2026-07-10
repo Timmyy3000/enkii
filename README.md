@@ -131,6 +131,14 @@ If you need a fully reproducible rollout, pin an exact release tag instead:
 uses: Timmyy3000/enkii@v0.2.0-beta.2
 ```
 
+## Compatibility matrix
+
+- Runtime: Bun `1.2.11`
+- GitHub events: `pull_request`, `issue_comment`, `pull_request_review_comment`
+- Trigger commands: `@enkii /review`, `@enkii /security`, `@enkii /benchmark`, `@enkii help`, `@enkii status`
+- Repository type: private or public repositories on GitHub
+- Fork PR behavior: custom code/security skill overrides from fork heads are blocked and bundled defaults are used; fork-owned policy-review prompts are skipped
+
 ## Action inputs
 
 | Input | Required | Default | Description |
@@ -227,7 +235,43 @@ If you’re asking an AI agent to set up enkii in a repository, give it this che
 
 - enkii now updates its tracking comment when a run fails, instead of silently leaving a dangling “working…” state.
 - If inline anchors fail, enkii preserves findings in summary notes rather than dropping the entire review.
+- Avoid `pull_request_review: submitted` with `cancel-in-progress: true` in the same workflow, or runs can self-cancel when enkii submits its own review.
 - Review lanes settle independently: successful reviews are posted even if another lane fails during prompt loading, model execution, validation, or GitHub posting. The overall action still reports the failed lane after preserving successful results.
+
+## Troubleshooting
+
+### `OPENROUTER_API_KEY` missing
+
+Error example: `enkii could not find OPENROUTER_API_KEY`
+
+Fix:
+1. Go to **Settings → Secrets and variables → Actions**
+2. Add repository secret `OPENROUTER_API_KEY`
+3. Re-run the failed workflow job
+
+### Runs are unexpectedly canceled
+
+If you see canceled `enkii review` jobs, remove `pull_request_review: submitted` from your workflow triggers when using `cancel-in-progress: true`.
+
+### Permissions errors when posting comments/reviews
+
+Ensure workflow permissions include:
+- `pull-requests: write`
+- `issues: write`
+- `contents: read`
+
+## Versioning
+
+- Releases and changes are tracked in [CHANGELOG.md](CHANGELOG.md)
+- We follow SemVer for stable releases and use prerelease tags while iterating
+- Prefer the moving compatible tag (`@v0.2`) or an exact release tag such as `@v0.2.0-beta.2`, not `@main`
+
+## Project docs
+
+- [Contributing guide](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security policy](SECURITY.md)
+- [Support guide](SUPPORT.md)
 
 ## Related projects (attribution)
 
