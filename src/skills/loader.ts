@@ -13,8 +13,8 @@
  *     secrets — same threat model as GitHub's pull_request_target docs).
  */
 
-import { readFile, stat } from "fs/promises";
-import { resolve, isAbsolute } from "path";
+import { lstat, readFile } from "fs/promises";
+import { isAbsolute, relative, resolve, sep } from "path";
 
 export type SkillKind = "review" | "security-review";
 
@@ -50,6 +50,38 @@ export class SkillLoadError extends Error {
   }
 }
 
+export async function loadRequiredRepositorySkill(options: {
+  skillPath: string;
+  workspacePath: string;
+  label: string;
+}): Promise<{ content: string; source: string }> {
+  const { skillPath, workspacePath, label } = options;
+  const trimmedPath = skillPath.trim();
+  if (!trimmedPath) {
+    throw new SkillLoadError(`enkii: ${label} path is empty.`);
+  }
+  if (
+    isAbsolute(trimmedPath) ||
+    trimmedPath.split(/[\\/]+/).includes("..")
+  ) {
+    throw invalidRepositoryPath(label, skillPath);
+  }
+
+  const workspaceRoot = resolve(workspacePath);
+  const source = resolve(workspaceRoot, trimmedPath);
+  const relativeSource = relative(workspaceRoot, source);
+  if (
+    relativeSource === ".." ||
+    relativeSource.startsWith(`..${sep}`) ||
+    isAbsolute(relativeSource)
+  ) {
+    throw invalidRepositoryPath(label, skillPath);
+  }
+
+  await rejectSymlinkedPath(workspaceRoot, relativeSource, label);
+  return { content: await readSkillFile(source, label), source };
+}
+
 export async function loadSkill(
   options: LoadSkillOptions,
 ): Promise<LoadSkillResult> {
@@ -72,26 +104,14 @@ export async function loadSkill(
       };
     }
 
-    if (isAbsolute(overridePath) || overridePath.includes("..")) {
-      throw new SkillLoadError(
-        `enkii: skill path "${overridePath}" is invalid. ` +
-          `Cause: paths must be relative to repo root and cannot contain "..". ` +
-          `Fix: use a path like ".enkii/review.md" relative to your repo root.`,
-      );
-    }
-
-    const resolved = resolve(workspacePath, overridePath);
-    if (!resolved.startsWith(workspacePath)) {
-      throw new SkillLoadError(
-        `enkii: skill path "${overridePath}" resolves outside the workspace. ` +
-          `Fix: use a path within your repo.`,
-      );
-    }
-
-    const content = await readSkillFile(resolved);
+    const loaded = await loadRequiredRepositorySkill({
+      skillPath: overridePath,
+      workspacePath,
+      label: `${kind} skill`,
+    });
     return {
-      content,
-      source: resolved,
+      content: loaded.content,
+      source: loaded.source,
       usedBundled: false,
       refusedForkOverride: false,
     };
@@ -106,24 +126,58 @@ export async function loadSkill(
   };
 }
 
-async function readSkillFile(path: string): Promise<string> {
+async function rejectSymlinkedPath(
+  workspaceRoot: string,
+  relativeSource: string,
+  label: string,
+): Promise<void> {
+  let current = workspaceRoot;
+  for (const segment of relativeSource.split(sep).filter(Boolean)) {
+    current = resolve(current, segment);
+    let info;
+    try {
+      info = await lstat(current);
+    } catch {
+      throw new SkillLoadError(
+        `enkii: ${label} file not found at "${current}". ` +
+          `Fix: check the path exists and is committed relative to the repo root.`,
+      );
+    }
+    if (info.isSymbolicLink()) {
+      throw new SkillLoadError(
+        `enkii: ${label} path "${current}" contains a symbolic link. ` +
+          `Fix: commit a regular Markdown file inside the repository.`,
+      );
+    }
+  }
+}
+
+function invalidRepositoryPath(label: string, path: string): SkillLoadError {
+  return new SkillLoadError(
+    `enkii: ${label} path "${path}" is invalid. ` +
+      `Cause: paths must be relative to repo root and cannot contain "..". ` +
+      `Fix: use a path like ".enkii/policy-review.md" relative to your repo root.`,
+  );
+}
+
+async function readSkillFile(path: string, label = "skill"): Promise<string> {
   let info;
   try {
-    info = await stat(path);
+    info = await lstat(path);
   } catch {
     throw new SkillLoadError(
-      `enkii: skill file not found at "${path}". ` +
+      `enkii: ${label} file not found at "${path}". ` +
         `Fix: check the path exists and is committed; for overrides, the path is relative to your repo root.`,
     );
   }
-  if (!info.isFile()) {
+  if (info.isSymbolicLink() || !info.isFile()) {
     throw new SkillLoadError(
-      `enkii: skill path "${path}" is not a regular file (symlinks and directories not allowed).`,
+      `enkii: ${label} path "${path}" is not a regular file (symlinks and directories not allowed).`,
     );
   }
   if (info.size > MAX_SKILL_BYTES) {
     throw new SkillLoadError(
-      `enkii: skill file "${path}" is ${(info.size / 1024).toFixed(0)} KB; cap is 256 KB. ` +
+      `enkii: ${label} file "${path}" is ${(info.size / 1024).toFixed(0)} KB; cap is 256 KB. ` +
         `Fix: trim the skill content. Consider splitting into multiple skills (v1 feature).`,
     );
   }
