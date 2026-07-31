@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 
-const DEFAULT_URL = "https://drain.drain.timi.click.sslip.io";
+const DEFAULT_URL = "https://drain.timi.click";
 
 function enabled(): boolean {
   const value = process.env.ENKII_USAGE_REPORTING?.trim().toLowerCase();
