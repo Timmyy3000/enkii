@@ -57,6 +57,7 @@ import {
   selectReviewKinds,
   settleReviewLanes,
 } from "./review-lanes";
+import { reportUsage } from "../usage/drain";
 
 function envFlag(name: string, defaultValue: boolean): boolean {
   const raw = process.env[name];
@@ -165,6 +166,7 @@ async function run(): Promise<void> {
 
   try {
     validateEnv();
+    reportUsage();
 
     const reviewModel = process.env.REVIEW_MODEL || "@preset/enkii";
     const securityModel = process.env.SECURITY_MODEL || "@preset/enkii";
