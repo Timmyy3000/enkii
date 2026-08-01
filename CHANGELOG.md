@@ -4,6 +4,17 @@ All notable changes to enkii will be documented here. Format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.2.0-beta.5] — 2026-08-01
+
+### Added
+
+- Added anonymous usage reporting to Drain.
+
+### Fixed
+
+- Routed usage reporting through the named Drain domain instead of an infrastructure address.
+- Avoided duplicate Drain event paths during review execution.
+
 ## [0.2.0-beta.4] — 2026-07-10
 
 ### Added
