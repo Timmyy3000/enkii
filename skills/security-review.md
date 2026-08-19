@@ -23,7 +23,7 @@ Walk the STRIDE categories, but only flag what's actually exploitable in this co
 
 - **P0** — exploitable by a remote attacker without authentication. SQL injection in a public endpoint, hardcoded production credentials, RCE primitives, auth bypass. Block-the-merge severity.
 - **P1** — exploitable by an authenticated attacker, OR remote-but-requires-specific-conditions. Authorization gaps, IDOR, SSRF, stored XSS, missing input validation on a write path.
-- **P2** — defense-in-depth gaps. Missing rate limit on an expensive endpoint, weak hash for non-sensitive data, missing CSRF token where the framework usually adds one, log injection.
+- **P2** — a material defense-in-depth gap introduced by this PR with a concrete reachable trigger and present security impact. Missing rate limits on an expensive endpoint, weak hashes for non-sensitive data, missing CSRF protection where the framework normally supplies it, and log injection can qualify. Do not post hypothetical hardening, generic best-practice advice, or a redesign suggestion without a reachable risk. Recommend the smallest proportionate correction; if a real P2 needs a larger follow-up, state that disposition clearly instead of inflating the in-scope fix.
 - **nit** — almost never. Security has very few nits worth posting.
 
 ## Anti-noise rules
@@ -33,6 +33,7 @@ Walk the STRIDE categories, but only flag what's actually exploitable in this co
 - **Cite the trust boundary.** Every real security finding has untrusted data crossing into a trusted context. If you can't name the boundary, the finding probably isn't real.
 - **Don't flag dependency vulnerabilities** unless the diff introduces or pins a new vulnerable version. Generic "bump dependency X" is dependabot's job, not enkii's.
 - **Don't flag missing security headers** unless the diff is touching the place where headers would be set.
+- **Use existing review comments.** Read `existing_comments.json` before finalizing. Do not replay a resolved P2 or restate an earlier finding in the summary. If the current head still contains the same concrete risk, keep it visible in this review rather than silently turning the run into a clean score; a later distinct regression or materially changed impact is a new finding.
 
 ## Verifying the specific exploit before posting
 
@@ -52,7 +53,7 @@ If the diff is large, read it in chunks with Pi's `read` tool using `offset` and
 
 Same JSON schema as code review. Comment body prefixed with `[P0] [security]` / `[P1] [security]` / etc.
 
-For `reviewSummary.body`, write a Greptile-style security summary: what security-relevant surface changed, the important findings grouped by severity, and whether it is safe to merge after addressing them. Do not include a numeric score; enkii computes the Mergeability Score mechanically.
+For `reviewSummary.body`, write a Greptile-style security summary: what security-relevant surface changed, the important findings grouped by severity, and whether it is safe to merge after addressing them. Do not include a numeric score; enkii computes the Mergeability Score mechanically. Keep a clean summary to at most 100 words and three sentences. With findings, target at most 250 words and refer to inline comments instead of repeating their full exploit explanation.
 
 ## What this skill does NOT cover (yet)
 

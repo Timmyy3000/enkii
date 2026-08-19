@@ -63,6 +63,18 @@ If the diff is large, use Pi's \`read\` tool with offset/limit chunks. **Do not 
 1. You MUST read and validate **every** candidate before posting anything.
 2. Preserve ordering: keep results in the same order as candidates.
 3. **Posting rule (STRICT):** Only post comments where \`status === "approved"\`. Never post rejected items.
+4. Apply the P2 quality gate from the supplied methodology only to P2 items:
+   keep a P2 only when the trigger is concrete and reachable, the changed code
+   creates a present material risk, and the recommendation is proportionate.
+   A substantial follow-up can remain approved when the risk is real. Reject
+   hypothetical future pain, preference, or redesign-only P2s. Do not reject a
+   still-present current-head P2 solely because an earlier review mentioned the
+   same root cause; rejecting it would create a misleading clean score.
+5. Keep \`reviewSummary.body\` concise: clean code/security summaries are at most
+   100 words and three sentences; summaries with findings target at most 250
+   words and must not repeat inline comment prose. For policy reviews, preserve
+   repository-required fields while using the compact labeled-line contract
+   and avoiding resolved-history replay.
 
 ### Output: call \`submit_validation\`
 

@@ -22,7 +22,7 @@ If you can't write the impact sentence concretely, the finding isn't ready. Drop
 
 - **P0** — data loss, security breach, crash on common path, or correctness bug that would page someone. Block-the-merge severity.
 - **P1** — clear correctness or behavioral bug. Wrong answer, broken edge case, race condition, missing input validation that lets a real exploit through. Should fix before merge.
-- **P2** — robustness, maintainability, or hidden-coupling concerns. Code works today but creates avoidable future pain. Worth addressing if quick.
+- **P2** — a material robustness, maintainability, or hidden-coupling risk introduced by this PR. The changed code must have a concrete reachable trigger and a present impact or failure mode; do not post a P2 for hypothetical future pain, a preference, or a redesign suggestion alone. Recommend the smallest proportionate correction. If the safe correction is substantial, keep a concise P2 when the risk is real and explicitly say that it should be dispositioned or followed up rather than inventing a larger in-scope fix.
 - **nit** — style, naming, formatting preferences. Almost never post these unless the codebase obviously cares (look at neighboring code). Default to silence on nits.
 
 ## Anti-noise rules
@@ -33,6 +33,7 @@ If you can't write the impact sentence concretely, the finding isn't ready. Drop
 - **No "good practice" / "best practice" assertions without naming the specific bad outcome** if the practice isn't followed.
 - **One issue per comment.** If you find two unrelated bugs in one hunk, write two comments.
 - **If the diff is small and clean, post zero findings.** A noisy review of a small clean PR teaches the team to mute the bot.
+- **Use existing review comments.** Read `existing_comments.json` before finalizing. Do not replay a resolved P2 or restate an earlier finding in the summary. If the current head still contains the same concrete risk, keep it visible in this review (do not silently deduplicate it into a clean score); if it was fixed, treat a later distinct regression or materially changed impact as a new finding.
 
 ## Verifying the specific repro before posting
 
@@ -56,7 +57,7 @@ For Pass 1 (candidate generation), produce a JSON object matching the schema pro
 - `line` — line number in the new file
 - `body` — comment text starting with `[P0]` / `[P1]` / `[P2]` / `[nit]` tag, then a one-line title, then a short paragraph explaining the issue and the fix. Concrete. No hedging.
 - `severity` — same as the body tag
-- `reviewSummary.body` — Greptile-style summary: what the PR changes, the important findings grouped by severity, and whether it is safe to merge after addressing them. Do not include a numeric score; enkii computes the Mergeability Score mechanically.
+- `reviewSummary.body` — Greptile-style summary: what the PR changes, the important findings grouped by severity, and whether it is safe to merge after addressing them. Do not include a numeric score; enkii computes the Mergeability Score mechanically. Keep a clean summary to at most 100 words and three sentences. With findings, target at most 250 words and refer to inline comments instead of repeating their full prose.
 
 For Pass 2 (validation), re-read each candidate's source. If the specific claim holds up, mark `approved`. If the area is right but the specific example is wrong, either rewrite the comment or mark `rejected` with a one-line reason. If the finding is style/preference rather than a bug, mark `rejected`.
 

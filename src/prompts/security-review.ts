@@ -51,6 +51,19 @@ Precomputed data files:
 - If you genuinely cannot inspect the diff or changed files, say that clearly in \`reviewSummary.body\` and do not claim the PR is safe to merge.
 </reading_requirements>
 
+<p2_quality_gate>
+Apply this gate only to P2 candidates; preserve P0/P1 security detection and
+severity behavior. A P2 needs a concrete reachable trigger, a present security
+risk in the changed code, material impact, and a smallest proportionate
+correction. Drop hypothetical hardening, generic best-practice advice, and
+redesign suggestions without a reachable exploit or failure mode. A larger
+follow-up does not invalidate a real P2; state the disposition concisely.
+Read \`existing_comments.json\`: do not replay resolved P2 history or duplicate
+summary prose. If the same concrete risk is still present on the current head,
+keep it visible in this review instead of silently treating the run as clean.
+A genuinely new regression or materially changed impact is eligible.
+</p2_quality_gate>
+
 <output_spec>
 When finished, call \`submit_review\` exactly once using this exact schema:
 
@@ -97,7 +110,7 @@ When finished, call \`submit_review\` exactly once using this exact schema:
   - \`side\`: "RIGHT" for new/modified code (default), "LEFT" only for removed code
 
 - **reviewSummary**:
-  - \`body\`: Greptile-style security summary: briefly describe the security-relevant surface reviewed, summarize the important findings by severity, and give clear merge guidance. Do not include a numeric score; enkii computes that mechanically.
+  - \`body\`: Greptile-style security summary: briefly describe the security-relevant surface reviewed, summarize the important findings by severity, and give clear merge guidance. Do not include a numeric score; enkii computes that mechanically. Keep a clean summary to at most 100 words and three sentences. With findings, target at most 250 words and refer to inline comments instead of repeating their full exploit explanation.
 </schema_details>
 </output_spec>
 

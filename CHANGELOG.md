@@ -4,6 +4,14 @@ All notable changes to enkii will be documented here. Format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.2.0-beta.6] — 2026-08-19
+
+### Changed
+
+- Tightened P2 review guidance around concrete reachable impact, proportionate remediation, and current-head visibility while preserving full every-push review and P0/P1 behavior.
+- Added concise summary contracts for clean and finding-bearing code, security, and repository-policy reviews, including compact required-field policy status lines.
+- Paginated existing issue and review-comment history used to inform review runs.
+
 ## [0.2.0-beta.5] — 2026-08-01
 
 ### Added
@@ -199,3 +207,5 @@ First end-to-end alpha. Code-complete on the v0.1 plan; not yet validated agains
 [0.2.0-beta.2]: https://github.com/Timmyy3000/enkii/releases/tag/v0.2.0-beta.2
 [0.2.0-beta.3]: https://github.com/Timmyy3000/enkii/releases/tag/v0.2.0-beta.3
 [0.2.0-beta.4]: https://github.com/Timmyy3000/enkii/releases/tag/v0.2.0-beta.4
+[0.2.0-beta.5]: https://github.com/Timmyy3000/enkii/releases/tag/v0.2.0-beta.5
+[0.2.0-beta.6]: https://github.com/Timmyy3000/enkii/releases/tag/v0.2.0-beta.6
