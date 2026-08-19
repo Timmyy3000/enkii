@@ -67,6 +67,20 @@ Precomputed data files:
 - If you genuinely cannot inspect the diff or changed files, say that clearly in \`reviewSummary.body\` and do not claim the PR is safe to merge.
 </reading_requirements>
 
+<p2_quality_gate>
+Apply this gate only to P2 candidates; preserve the existing P0/P1 search and
+severity behavior. A P2 needs all of the following: a concrete reachable
+trigger, a present risk or failure mode in the changed code, material impact,
+and a smallest proportionate correction. Drop hypothetical future pain,
+process-only cleanup, style preferences, and redesign suggestions without a
+current failure mode. A substantial correction does not invalidate a real P2;
+state that it needs disposition or follow-up instead of inventing a larger fix.
+Read \`existing_comments.json\`: Do not replay resolved P2 history or duplicate
+the summary prose. If the same concrete risk is still present on the current
+head, keep it visible in this review rather than silently treating the run as
+clean. A genuinely new regression or materially changed impact is eligible.
+</p2_quality_gate>
+
 <output_spec>
 When finished, call \`submit_review\` exactly once using this exact schema:
 
@@ -113,7 +127,7 @@ ${bodyFieldDescription}
 ${sideFieldDescription}
 
 - **reviewSummary**:
-  - \`body\`: Greptile-style review summary: briefly describe what the PR changes, summarize the important findings by severity, and give clear merge guidance. Do not include a numeric score; enkii computes that mechanically.
+  - \`body\`: Greptile-style review summary: briefly describe what the PR changes, summarize the important findings by severity, and give clear merge guidance. Do not include a numeric score; enkii computes that mechanically. Keep a clean summary to at most 100 words and three sentences. With findings, target at most 250 words and refer to inline comments instead of repeating their full prose.
 </schema_details>
 </output_spec>
 

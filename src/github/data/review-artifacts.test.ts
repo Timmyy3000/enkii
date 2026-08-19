@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import type { Octokits } from "../api/client";
-import { computeAndStoreDiff } from "./review-artifacts";
+import { computeAndStoreDiff, fetchAndStoreComments } from "./review-artifacts";
 
 describe("computeAndStoreDiff", () => {
   test("uses GitHub PR diff when PR metadata is available", async () => {
@@ -35,6 +35,49 @@ describe("computeAndStoreDiff", () => {
       expect(requestedAcceptHeaders).toEqual([
         "application/vnd.github.v3.diff",
       ]);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("fetchAndStoreComments", () => {
+  test("fetches every page for issue and review comments", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "enkii-comments-"));
+    const issueComments = Array.from({ length: 101 }, (_, index) => ({
+      id: index + 1,
+      body: `issue-${index + 1}`,
+    }));
+    const reviewComments = Array.from({ length: 101 }, (_, index) => ({
+      id: index + 1001,
+      body: `review-${index + 1}`,
+    }));
+    const issueEndpoint = {};
+    const reviewEndpoint = {};
+    const paginateCalls: unknown[] = [];
+    const octokit = {
+      rest: {
+        issues: { listComments: issueEndpoint },
+        pulls: { listReviewComments: reviewEndpoint },
+        paginate: async (endpoint: unknown, params: unknown) => {
+          paginateCalls.push({ endpoint, params });
+          return endpoint === issueEndpoint ? issueComments : reviewComments;
+        },
+      },
+    } as unknown as Octokits;
+
+    try {
+      const commentsPath = await fetchAndStoreComments(
+        octokit,
+        "Docsyde",
+        "backend",
+        294,
+        tempDir,
+      );
+      const stored = JSON.parse(await readFile(commentsPath, "utf8"));
+      expect(stored.issueComments).toHaveLength(101);
+      expect(stored.reviewComments).toHaveLength(101);
+      expect(paginateCalls).toHaveLength(2);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
