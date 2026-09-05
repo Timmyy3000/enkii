@@ -1,6 +1,7 @@
 import { execFileSync } from "child_process";
 import { writeFile, mkdir } from "fs/promises";
 import type { Octokits } from "../api/client";
+import { GITHUB_SERVER_URL } from "../api/config";
 import type { ReviewArtifacts } from "../../prompts/types";
 
 const DIFF_MAX_BUFFER = 50 * 1024 * 1024; // 50MB buffer for large diffs
@@ -146,6 +147,35 @@ function computeLocalDiff(baseRef: string, options?: DiffOptions): Buffer {
     );
   }
 
+  const owner = options?.owner;
+  const repo = options?.repo;
+  if (
+    !owner ||
+    !repo ||
+    !/^[A-Za-z0-9_-]+$/.test(owner) ||
+    !/^[A-Za-z0-9_.-]+$/.test(repo) ||
+    repo === "." ||
+    repo === ".."
+  ) {
+    throw new Error(
+      "Local PR diff requires a valid base repository owner and name",
+    );
+  }
+  const server = new URL(GITHUB_SERVER_URL);
+  if (
+    server.protocol !== "https:" ||
+    server.username ||
+    server.password ||
+    server.search ||
+    server.hash
+  ) {
+    throw new Error(
+      "Local PR diff requires an HTTPS GitHub server URL without credentials, query, or fragment",
+    );
+  }
+  // origin may be a contributor's fork without the target's base commit.
+  const baseRepository = `${server.href.replace(/\/$/, "")}/${owner}/${repo}.git`;
+
   const git = (args: string[]) =>
     execFileSync("git", ["--no-replace-objects", ...args], {
       stdio: "pipe",
@@ -170,13 +200,14 @@ function computeLocalDiff(baseRef: string, options?: DiffOptions): Buffer {
   }
 
   // Without --refetch, Git can report success for a cached SHA without even
-  // contacting origin. Require the remote fetch to succeed before reviewing.
+  // contacting the server. Reuse Git's scoped checkout credentials/helpers;
+  // never put tokens in the URL, arguments, or persistent configuration.
   git([
     "fetch",
     "--refetch",
     "--no-tags",
     "--no-recurse-submodules",
-    "origin",
+    baseRepository,
     baseSha,
   ]);
   if (git(["cat-file", "-t", baseSha]).toString("utf8").trim() !== "commit") {
