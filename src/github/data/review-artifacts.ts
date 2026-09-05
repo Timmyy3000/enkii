@@ -30,7 +30,7 @@ export async function computeAndStoreDiff(
   const promptsDir = `${tempDir}/enkii-prompts`;
   await mkdir(promptsDir, { recursive: true });
 
-  let diff: string;
+  let diff: string | Buffer;
   if (options?.octokit && options.owner && options.repo && options.prNumber) {
     try {
       diff = await fetchPullRequestDiff({
@@ -131,7 +131,7 @@ function fetchGhPullRequestDiff(args: {
   return diff;
 }
 
-function computeLocalDiff(baseRef: string, options?: DiffOptions): string {
+function computeLocalDiff(baseRef: string, options?: DiffOptions): Buffer {
   const baseSha = options?.expectedBaseSha;
   const headSha = options?.expectedHeadSha;
   const fullSha = /^[0-9a-f]{40}$/;
@@ -148,18 +148,22 @@ function computeLocalDiff(baseRef: string, options?: DiffOptions): string {
 
   const git = (args: string[]) =>
     execFileSync("git", ["--no-replace-objects", ...args], {
-      encoding: "utf8",
       stdio: "pipe",
       maxBuffer: DIFF_MAX_BUFFER,
       cwd: options?.cwd,
     });
-  const actualHead = git(["rev-parse", "--verify", "HEAD^{commit}"]).trim();
+  const actualHead = git(["rev-parse", "--verify", "HEAD^{commit}"])
+    .toString("utf8")
+    .trim();
   if (actualHead !== headSha) {
     throw new Error(
       `Local PR diff refused: checked out ${actualHead}, expected PR head ${headSha}`,
     );
   }
-  if (git(["rev-parse", "--is-shallow-repository"]).trim() === "true") {
+  if (
+    git(["rev-parse", "--is-shallow-repository"]).toString("utf8").trim() ===
+    "true"
+  ) {
     throw new Error(
       "Local PR diff requires full history; configure actions/checkout with fetch-depth: 0",
     );
@@ -175,10 +179,12 @@ function computeLocalDiff(baseRef: string, options?: DiffOptions): string {
     "origin",
     baseSha,
   ]);
-  if (git(["cat-file", "-t", baseSha]).trim() !== "commit") {
+  if (git(["cat-file", "-t", baseSha]).toString("utf8").trim() !== "commit") {
     throw new Error(`Local PR diff refused: base ${baseSha} is not a commit`);
   }
-  const mergeBase = git(["merge-base", "--all", headSha, baseSha]).trim();
+  const mergeBase = git(["merge-base", "--all", headSha, baseSha])
+    .toString("utf8")
+    .trim();
   if (!fullSha.test(mergeBase)) {
     throw new Error(
       `Local PR diff refused: no unique merge-base for ${baseRef}`,
