@@ -7,6 +7,7 @@ import type { GitHubPullRequest } from "../types";
  */
 export type PRBranchData = {
   baseRefName: string;
+  baseRefOid: string;
   headRefName: string;
   headRefOid: string;
   title: string;
@@ -52,6 +53,7 @@ export async function fetchPRBranchData({
 
     return {
       baseRefName: pullRequest.baseRefName,
+      baseRefOid: pullRequest.baseRefOid,
       headRefName: pullRequest.headRefName,
       headRefOid: pullRequest.headRefOid,
       title: pullRequest.title,
