@@ -12,6 +12,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { pathToFileURL } from "url";
 import type { Octokits } from "../api/client";
+import { GITHUB_SERVER_URL } from "../api/config";
 import { computeAndStoreDiff } from "./review-artifacts";
 
 const roots: string[] = [];
@@ -39,6 +40,19 @@ function git(cwd: string, ...args: string[]): string {
       maxBuffer: 60 * 1024 * 1024,
     },
   ).trim();
+}
+
+function mapBaseRepository(
+  cwd: string,
+  repository: string,
+  server = GITHUB_SERVER_URL,
+) {
+  git(
+    cwd,
+    "config",
+    `url.${pathToFileURL(repository).href}.insteadOf`,
+    `${server.replace(/\/$/, "")}/fixture_emu/repo.git`,
+  );
 }
 
 function fixture(lines = 3) {
@@ -81,6 +95,7 @@ function fixture(lines = 3) {
   git(origin, "commit", "-m", "later base");
   git(root, "clone", "--no-local", origin, cwd);
   git(cwd, "checkout", "--detach", expectedHeadSha);
+  mapBaseRepository(cwd, origin);
   let requests = 0;
   const octokit = {
     rest: {
@@ -97,7 +112,7 @@ function fixture(lines = 3) {
     expectedBaseSha,
     expectedHeadSha,
     octokit,
-    owner: "fixture",
+    owner: "fixture_emu",
     repo: "repo",
     prNumber: 27,
     githubToken: "unused-test-token",
@@ -127,6 +142,74 @@ async function rejectsWithoutArtifact(
 }
 
 describe("verified local diff after GitHub 406", () => {
+  test("fetches the upstream-only base even when origin is a distinct fork", async () => {
+    const f = fixture(21000);
+    const fork = join(f.root, "fork");
+    const checkout = join(f.root, "fork-checkout");
+    git(
+      f.root,
+      "clone",
+      "--no-local",
+      "--single-branch",
+      "--branch",
+      "pr",
+      f.origin,
+      fork,
+    );
+    git(f.root, "clone", "--no-local", fork, checkout);
+    expect(() =>
+      git(fork, "cat-file", "-t", f.options.expectedBaseSha),
+    ).toThrow();
+    expect(() =>
+      git(checkout, "cat-file", "-t", f.options.expectedBaseSha),
+    ).toThrow();
+    mapBaseRepository(checkout, f.origin);
+    const authKey = `http.${GITHUB_SERVER_URL.replace(/\/$/, "")}/.extraheader`;
+    git(checkout, "config", authKey, "AUTHORIZATION: bearer fixture-only");
+    const actual = readFileSync(await f.run({ cwd: checkout }));
+    const expected = execFileSync(
+      "git",
+      [
+        "diff",
+        "--binary",
+        "--full-index",
+        "--no-renames",
+        `${f.ancestor}..${f.options.expectedHeadSha}`,
+        "--",
+      ],
+      { cwd: checkout },
+    );
+    expect(actual.equals(expected)).toBe(true);
+    expect(actual.toString()).toContain("+TAIL-MARKER");
+    expect(actual.toString().split("\n").length).toBeGreaterThan(20000);
+    expect(actual.toString()).not.toContain("base-only.txt");
+    expect(git(checkout, "cat-file", "-t", f.options.expectedBaseSha)).toBe(
+      "commit",
+    );
+    expect(git(checkout, "remote", "get-url", "origin")).toBe(fork);
+    expect(git(checkout, "config", "--get", authKey)).toBe(
+      "AUTHORIZATION: bearer fixture-only",
+    );
+  }, 30000);
+
+  test("fetches the target on the configured enterprise GitHub host", () => {
+    const f = fixture();
+    const server = "https://git.enterprise.invalid/enterprise";
+    mapBaseRepository(f.cwd, f.origin, server);
+    git(f.cwd, "remote", "set-url", "origin", join(f.root, "missing-fork"));
+    const modulePath = pathToFileURL(
+      join(import.meta.dir, "review-artifacts.ts"),
+    ).href;
+    const script = `import { computeAndStoreDiff } from ${JSON.stringify(modulePath)}; await computeAndStoreDiff("main", ${JSON.stringify(f.root)}, ${JSON.stringify({ cwd: f.cwd, expectedBaseSha: f.options.expectedBaseSha, expectedHeadSha: f.options.expectedHeadSha, owner: "fixture_emu", repo: "repo" })});`;
+    execFileSync(process.execPath, ["-e", script], {
+      env: { ...process.env, GITHUB_SERVER_URL: server },
+      stdio: "pipe",
+    });
+    expect(
+      readFileSync(join(f.root, "enkii-prompts", "pr.diff"), "utf8"),
+    ).toContain("+TAIL-MARKER");
+  }, 30000);
+
   test("preserves non-UTF-8 text bytes exactly", async () => {
     const f = fixture();
     writeFileSync(
@@ -195,7 +278,7 @@ describe("verified local diff after GitHub 406", () => {
     expect(git(f.cwd, "cat-file", "-t", f.options.expectedBaseSha)).toBe(
       "commit",
     );
-    git(f.cwd, "remote", "set-url", "origin", join(f.root, "missing-origin"));
+    rmSync(f.origin, { recursive: true, force: true });
     await rejectsWithoutArtifact(f);
   }, 30000);
 
@@ -318,3 +401,54 @@ test("rejects missing or unsafe immutable metadata before running Git", async ()
   }
   expect(existsSync(join(root, "enkii-prompts", "pr.diff"))).toBe(false);
 });
+
+test("rejects missing or unsafe target repository components before running Git", async () => {
+  const root = mkdtempSync(join(tmpdir(), "enkii-invalid-repo-"));
+  roots.push(root);
+  for (const invalid of [
+    undefined,
+    "..",
+    "../other",
+    "owner/repo",
+    "repo?query",
+    "repo#fragment",
+    "repo; echo unsafe",
+  ]) {
+    for (const field of ["owner", "repo"]) {
+      await expect(
+        computeAndStoreDiff("main", root, {
+          cwd: join(root, "not-a-repository"),
+          expectedBaseSha: "a".repeat(40),
+          expectedHeadSha: "b".repeat(40),
+          owner: "owner",
+          repo: "repo",
+          [field]: invalid,
+        }),
+      ).rejects.toThrow("valid base repository owner and name");
+    }
+  }
+  expect(existsSync(join(root, "enkii-prompts", "pr.diff"))).toBe(false);
+});
+
+test("rejects unsafe server URLs before accessing Git or credentials", () => {
+  const root = mkdtempSync(join(tmpdir(), "enkii-invalid-server-"));
+  roots.push(root);
+  const modulePath = pathToFileURL(
+    join(import.meta.dir, "review-artifacts.ts"),
+  ).href;
+  const script = `import { computeAndStoreDiff } from ${JSON.stringify(modulePath)}; await computeAndStoreDiff("main", ${JSON.stringify(root)}, ${JSON.stringify({ cwd: join(root, "not-a-repository"), expectedBaseSha: "a".repeat(40), expectedHeadSha: "b".repeat(40), owner: "owner", repo: "repo" })});`;
+  for (const server of [
+    "http://git.invalid",
+    "https://user:password@git.invalid",
+    "https://git.invalid?query",
+    "https://git.invalid#fragment",
+  ]) {
+    expect(() =>
+      execFileSync(process.execPath, ["-e", script], {
+        env: { ...process.env, GITHUB_SERVER_URL: server },
+        stdio: "pipe",
+      }),
+    ).toThrow("HTTPS GitHub server URL");
+  }
+  expect(existsSync(join(root, "enkii-prompts", "pr.diff"))).toBe(false);
+}, 30000);
