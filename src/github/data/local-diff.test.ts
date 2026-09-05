@@ -127,6 +127,34 @@ async function rejectsWithoutArtifact(
 }
 
 describe("verified local diff after GitHub 406", () => {
+  test("preserves non-UTF-8 text bytes exactly", async () => {
+    const f = fixture();
+    writeFileSync(
+      join(f.cwd, "legacy.txt"),
+      Buffer.from([0x61, 0xff, 0xfe, 0x0a]),
+    );
+    git(f.cwd, "add", "legacy.txt");
+    git(f.cwd, "commit", "-m", "non-UTF-8 text");
+    const head = git(f.cwd, "rev-parse", "HEAD");
+    const actual = readFileSync(await f.run({ expectedHeadSha: head }));
+    const expected = execFileSync(
+      "git",
+      [
+        "diff",
+        "--binary",
+        "--full-index",
+        "--no-renames",
+        `${f.ancestor}..${head}`,
+        "--",
+      ],
+      { cwd: f.cwd },
+    );
+    expect(actual.equals(expected)).toBe(true);
+    expect(actual.includes(Buffer.from([0x2b, 0x61, 0xff, 0xfe, 0x0a]))).toBe(
+      true,
+    );
+  }, 30000);
+
   test("stores every change above 20,000 lines from immutable divergent commits", async () => {
     const f = fixture(21000);
     const path = await f.run();
