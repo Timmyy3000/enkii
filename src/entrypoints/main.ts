@@ -300,6 +300,8 @@ async function run(): Promise<void> {
       title: prBranch.title,
       body: prBranch.body,
       githubToken,
+      expectedBaseSha: prBranch.baseRefOid,
+      expectedHeadSha: prBranch.headRefOid,
       ignoreExistingComments: benchmarkMode,
     });
 

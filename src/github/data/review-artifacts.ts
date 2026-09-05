@@ -1,27 +1,31 @@
-import { execFileSync, execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { writeFile, mkdir } from "fs/promises";
 import type { Octokits } from "../api/client";
 import type { ReviewArtifacts } from "../../prompts/types";
 
 const DIFF_MAX_BUFFER = 50 * 1024 * 1024; // 50MB buffer for large diffs
 
+type DiffOptions = {
+  githubToken?: string;
+  prNumber?: number;
+  octokit?: Octokits;
+  owner?: string;
+  repo?: string;
+  expectedBaseSha?: string;
+  expectedHeadSha?: string;
+  cwd?: string;
+};
+
 /**
  * Compute the PR diff and store it on disk.
  *
- * Tries git merge-base first (requires sufficient history). When that
- * fails (e.g. shallow clone without unshallow support) it falls back
- * to `gh pr diff` which always works.
+ * Prefer GitHub's PR diff. Its 406 response (including the line limit) uses
+ * a complete local merge-base diff of the verified PR commits instead.
  */
 export async function computeAndStoreDiff(
   baseRef: string,
   tempDir: string,
-  options?: {
-    githubToken?: string;
-    prNumber?: number;
-    octokit?: Octokits;
-    owner?: string;
-    repo?: string;
-  },
+  options?: DiffOptions,
 ): Promise<string> {
   const promptsDir = `${tempDir}/enkii-prompts`;
   await mkdir(promptsDir, { recursive: true });
@@ -36,24 +40,42 @@ export async function computeAndStoreDiff(
         prNumber: options.prNumber,
       });
     } catch (error) {
-      if (!options.githubToken) throw error;
-      console.warn(
-        `GitHub diff API failed, falling back to gh pr diff: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      diff = fetchGhPullRequestDiff({
-        githubToken: options.githubToken,
-        owner: options.owner,
-        repo: options.repo,
-        prNumber: options.prNumber,
-      });
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "status" in error &&
+        error.status === 406
+      ) {
+        console.warn(
+          "GitHub diff API returned 406; using verified local git diff",
+        );
+        diff = computeLocalDiff(baseRef, options);
+      } else {
+        if (!options.githubToken) throw error;
+        console.warn(
+          `GitHub diff API failed, falling back to gh pr diff: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        diff = fetchGhPullRequestDiff({
+          githubToken: options.githubToken,
+          owner: options.owner,
+          repo: options.repo,
+          prNumber: options.prNumber,
+        });
+      }
     }
   } else {
     diff = computeLocalDiff(baseRef, options);
   }
 
+  const diffBytes = Buffer.byteLength(diff, "utf8");
+  if (diffBytes > DIFF_MAX_BUFFER) {
+    throw new Error(
+      "PR diff exceeds the 50 MiB limit; refusing to store a partial review artifact",
+    );
+  }
   const diffPath = `${promptsDir}/pr.diff`;
   await writeFile(diffPath, diff);
-  console.log(`Stored PR diff (${diff.length} bytes) at ${diffPath}`);
+  console.log(`Stored PR diff (${diffBytes} bytes) at ${diffPath}`);
   return diffPath;
 }
 
@@ -98,73 +120,92 @@ function fetchGhPullRequestDiff(args: {
   if (args.owner && args.repo) {
     command.push("--repo", `${args.owner}/${args.repo}`);
   }
-  return execFileSync("gh", command, {
+  const diff = execFileSync("gh", command, {
     encoding: "utf8",
     maxBuffer: DIFF_MAX_BUFFER,
     env: { ...process.env, GH_TOKEN: args.githubToken },
   });
+  if (diff.length === 0) {
+    throw new Error(`gh returned an empty diff for PR #${args.prNumber}`);
+  }
+  return diff;
 }
 
-function computeLocalDiff(
-  baseRef: string,
-  options?: { githubToken?: string; prNumber?: number },
-): string {
-  try {
-    // Unshallow the repo if it's a shallow clone (needed for merge-base)
-    try {
-      execSync("git rev-parse --is-shallow-repository", {
-        encoding: "utf8",
-        stdio: "pipe",
-      }).trim() === "true" &&
-        execFileSync("git", ["fetch", "--unshallow"], {
-          encoding: "utf8",
-          stdio: "pipe",
-        });
-      console.log("Unshallowed repository");
-    } catch {
-      console.log("Repository already has full history");
-    }
-
-    // Fetch the base branch (it may not exist locally yet)
-    try {
-      execFileSync(
-        "git",
-        ["fetch", "origin", `${baseRef}:refs/remotes/origin/${baseRef}`],
-        {
-          encoding: "utf8",
-          stdio: "pipe",
-        },
-      );
-      console.log(`Fetched base branch: ${baseRef}`);
-    } catch {
-      console.log(`Base branch fetch skipped (may already exist): ${baseRef}`);
-    }
-
-    const mergeBase = execSync(
-      `git merge-base HEAD refs/remotes/origin/${baseRef}`,
-      { encoding: "utf8" },
-    ).trim();
-
-    return execSync(`git --no-pager diff ${mergeBase}..HEAD`, {
-      encoding: "utf8",
-      maxBuffer: DIFF_MAX_BUFFER,
-    });
-  } catch {
-    // Fallback: use gh CLI to get the diff (works even with shallow clones)
-    if (options?.githubToken && options?.prNumber) {
-      console.log(
-        "Git merge-base failed, falling back to gh pr diff for PR diff",
-      );
-      return fetchGhPullRequestDiff({
-        githubToken: options.githubToken,
-        prNumber: options.prNumber,
-      });
-    } else {
-      throw new Error(
-        "Git merge-base failed and no fallback credentials provided",
-      );
-    }
+function computeLocalDiff(baseRef: string, options?: DiffOptions): string {
+  const baseSha = options?.expectedBaseSha;
+  const headSha = options?.expectedHeadSha;
+  const fullSha = /^[0-9a-f]{40}$/;
+  if (
+    !baseSha ||
+    !headSha ||
+    !fullSha.test(baseSha) ||
+    !fullSha.test(headSha)
+  ) {
+    throw new Error(
+      "Local PR diff requires full immutable base and head commit SHAs",
+    );
   }
+
+  const git = (args: string[]) =>
+    execFileSync("git", ["--no-replace-objects", ...args], {
+      encoding: "utf8",
+      stdio: "pipe",
+      maxBuffer: DIFF_MAX_BUFFER,
+      cwd: options?.cwd,
+    });
+  const actualHead = git(["rev-parse", "--verify", "HEAD^{commit}"]).trim();
+  if (actualHead !== headSha) {
+    throw new Error(
+      `Local PR diff refused: checked out ${actualHead}, expected PR head ${headSha}`,
+    );
+  }
+  if (git(["rev-parse", "--is-shallow-repository"]).trim() === "true") {
+    throw new Error(
+      "Local PR diff requires full history; configure actions/checkout with fetch-depth: 0",
+    );
+  }
+
+  // Without --refetch, Git can report success for a cached SHA without even
+  // contacting origin. Require the remote fetch to succeed before reviewing.
+  git([
+    "fetch",
+    "--refetch",
+    "--no-tags",
+    "--no-recurse-submodules",
+    "origin",
+    baseSha,
+  ]);
+  if (git(["cat-file", "-t", baseSha]).trim() !== "commit") {
+    throw new Error(`Local PR diff refused: base ${baseSha} is not a commit`);
+  }
+  const mergeBase = git(["merge-base", "--all", headSha, baseSha]).trim();
+  if (!fullSha.test(mergeBase)) {
+    throw new Error(
+      `Local PR diff refused: no unique merge-base for ${baseRef}`,
+    );
+  }
+
+  const diff = git([
+    "--no-pager",
+    "diff",
+    "--no-ext-diff",
+    "--no-textconv",
+    "--no-color",
+    "--no-relative",
+    "--binary",
+    "--full-index",
+    "--no-renames",
+    "--ignore-submodules=none",
+    "--submodule=short",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+    `${mergeBase}..${headSha}`,
+    "--",
+  ]);
+  if (diff.length === 0) {
+    throw new Error(`Local PR diff was empty for ${baseRef}`);
+  }
+  return diff;
 }
 
 export async function fetchAndStoreComments(
@@ -250,6 +291,8 @@ export async function computeReviewArtifacts(opts: {
   title: string;
   body: string;
   githubToken?: string;
+  expectedBaseSha?: string;
+  expectedHeadSha?: string;
   ignoreExistingComments?: boolean;
 }): Promise<ReviewArtifacts> {
   const [diffPath, commentsPath, descriptionPath] = await Promise.all([
@@ -259,6 +302,8 @@ export async function computeReviewArtifacts(opts: {
       octokit: opts.octokit,
       owner: opts.owner,
       repo: opts.repo,
+      expectedBaseSha: opts.expectedBaseSha,
+      expectedHeadSha: opts.expectedHeadSha,
     }),
     opts.ignoreExistingComments
       ? storeEmptyComments(opts.tempDir)
