@@ -78,6 +78,8 @@ export type TagDispatchResult = {
     | "status"
     | "skip";
   trackingCommentId?: number;
+  /** Identity returned by our freshly created tracking comment. */
+  postingActorId?: number;
   reason?: string;
 };
 
@@ -92,7 +94,9 @@ export async function prepareTagExecution({
   octokit,
 }: PrepareTagOptions): Promise<TagDispatchResult> {
   if (!isEntityContext(context)) {
-    throw new Error("enkii: tag execution requires an entity context (PR or issue)");
+    throw new Error(
+      "enkii: tag execution requires an entity context (PR or issue)",
+    );
   }
 
   await checkHumanActor(octokit.rest, context);
@@ -103,33 +107,60 @@ export async function prepareTagExecution({
   // when run_security input is on, code only otherwise). Resolved downstream.
   if (context.eventName === "pull_request" && context.isPR) {
     if (await hasExistingEnkiiReview(octokit, context, ENKII_REVIEW_MARKER)) {
-      console.log("enkii: prior code review found on this PR; running again on the new HEAD.");
+      console.log(
+        "enkii: prior code review found on this PR; running again on the new HEAD.",
+      );
     }
-    const comment = await createInitialComment(octokit.rest, context, "default");
+    const comment = await createInitialComment(
+      octokit.rest,
+      context,
+      "default",
+    );
     core.setOutput("enkii_command", "auto");
     core.setOutput("enkii_comment_id", String(comment.id));
-    return { command: "auto", trackingCommentId: comment.id };
+    return {
+      command: "auto",
+      trackingCommentId: comment.id,
+      postingActorId:
+        !context.inputs.useStickyComment && comment.user?.type === "Bot"
+          ? comment.user.id
+          : undefined,
+    };
   }
 
   // Slash-command paths (issue_comment / review_comment / review).
   switch (commandContext?.command) {
     case "review": {
-      const comment = await createInitialComment(octokit.rest, context, "default");
+      const comment = await createInitialComment(
+        octokit.rest,
+        context,
+        "default",
+      );
       core.setOutput("enkii_command", "review");
       core.setOutput("enkii_comment_id", String(comment.id));
       return { command: "review", trackingCommentId: comment.id };
     }
     case "benchmark": {
-      const comment = await createInitialComment(octokit.rest, context, "benchmark");
+      const comment = await createInitialComment(
+        octokit.rest,
+        context,
+        "benchmark",
+      );
       core.setOutput("enkii_command", "benchmark");
       core.setOutput("enkii_comment_id", String(comment.id));
       return { command: "benchmark", trackingCommentId: comment.id };
     }
     case "security": {
-      if (await hasExistingEnkiiReview(octokit, context, ENKII_SECURITY_MARKER)) {
+      if (
+        await hasExistingEnkiiReview(octokit, context, ENKII_SECURITY_MARKER)
+      ) {
         console.log("enkii: prior security review found; running again.");
       }
-      const comment = await createInitialComment(octokit.rest, context, "security");
+      const comment = await createInitialComment(
+        octokit.rest,
+        context,
+        "security",
+      );
       core.setOutput("enkii_command", "security");
       core.setOutput("enkii_comment_id", String(comment.id));
       return { command: "security", trackingCommentId: comment.id };

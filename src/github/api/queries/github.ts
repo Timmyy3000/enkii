@@ -10,6 +10,7 @@ export const PR_QUERY = `
           login
         }
         baseRefName
+        baseRefOid
         headRefName
         headRefOid
         createdAt

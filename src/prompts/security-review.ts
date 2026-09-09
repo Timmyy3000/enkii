@@ -40,7 +40,7 @@ PR Base Ref: ${prBaseRef}
 
 Precomputed data files:
 - PR Description: \`${descriptionPath}\`
-- Full PR Diff: \`${diffPath}\`
+- Assigned Review Diff: \`${diffPath}\` (full PR or incremental update, as specified by the host's review scope)
 - Existing Comments: \`${commentsPath}\`
 </context>
 

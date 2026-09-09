@@ -126,26 +126,15 @@ function isTransientProviderError(errorMessage?: string): boolean {
   );
 }
 
-function isMissingOutputError(
-  errorMessage: string,
-  outputToolName: string,
-): boolean {
-  return errorMessage.startsWith(
-    `enkii: agent did not call ${outputToolName}.`,
-  );
-}
-
 function buildMissingOutputRetryPrompt(
-  userPrompt: string,
   outputToolName: string,
   attempt: number,
 ): string {
-  return `${userPrompt}
-
-<retry_notice>
+  return `<retry_notice>
 Previous attempt ${attempt} ended without calling \`${outputToolName}\`.
-You must finish this retry by calling \`${outputToolName}\` exactly once with the final structured output.
-Do not stop after reading files. Do not answer with prose.
+Use the evidence already gathered in this session; do not restart the review.
+Call \`${outputToolName}\` exactly once now with the final structured output.
+If coverage is incomplete, report it explicitly. Do not answer with prose.
 </retry_notice>`;
 }
 
@@ -154,20 +143,19 @@ export async function runAgent<T>(
 ): Promise<RunAgentResult<T>> {
   let transientRetriesRemaining =
     options.transientRetries ?? parseEnvTransientRetries();
-  let missingOutputRetriesRemaining =
-    options.missingOutputRetries ?? parseEnvMissingOutputRetries();
   let totalDurationMs = 0;
   let totalToolCallCount = 0;
   const totalUsage = emptyUsage();
+  const deadline =
+    Date.now() + (options.timeoutMs ?? parseEnvTimeout() ?? 20 * 60 * 1000);
 
   let attempt = 1;
-  let userPrompt = options.userPrompt;
 
   while (true) {
     try {
       const result = await runAgentAttempt({
         ...options,
-        userPrompt,
+        timeoutMs: Math.max(1, deadline - Date.now()),
       });
       totalDurationMs += result.durationMs;
       totalToolCallCount += result.toolCallCount;
@@ -184,30 +172,16 @@ export async function runAgent<T>(
       totalToolCallCount += error.toolCallCount;
       addUsage(totalUsage, error.usage);
       const transient = isTransientProviderError(error.message);
-      if (transient && transientRetriesRemaining > 0) {
+      if (
+        transient &&
+        transientRetriesRemaining > 0 &&
+        Date.now() < deadline &&
+        !options.getOutput()
+      ) {
         transientRetriesRemaining--;
         const prefix = options.logPrefix ? `:${options.logPrefix}` : "";
         console.warn(
           `enkii${prefix}: transient provider failure, retrying agent run (${attempt})`,
-        );
-        attempt++;
-        continue;
-      }
-
-      const missingOutput = isMissingOutputError(
-        error.message,
-        options.outputToolName,
-      );
-      if (missingOutput && missingOutputRetriesRemaining > 0) {
-        missingOutputRetriesRemaining--;
-        userPrompt = buildMissingOutputRetryPrompt(
-          options.userPrompt,
-          options.outputToolName,
-          attempt,
-        );
-        const prefix = options.logPrefix ? `:${options.logPrefix}` : "";
-        console.warn(
-          `enkii${prefix}: agent returned without ${options.outputToolName}, retrying with stricter instruction (${attempt})`,
         );
         attempt++;
         continue;
@@ -275,16 +249,33 @@ async function runAgentAttempt<T>(
 
   try {
     await agent.prompt(options.userPrompt);
+    const repairs =
+      options.missingOutputRetries ?? parseEnvMissingOutputRetries();
+    for (
+      let repair = 1;
+      !options.getOutput() && !errorMessage && repair <= repairs;
+      repair++
+    ) {
+      console.warn(
+        `enkii${prefix}: repairing missing ${options.outputToolName} in the existing session (${repair})`,
+      );
+      await agent.prompt(
+        buildMissingOutputRetryPrompt(options.outputToolName, repair),
+      );
+    }
+  } catch (error) {
+    errorMessage ??= error instanceof Error ? error.message : String(error);
   } finally {
     clearTimeout(timer);
   }
 
   const durationMs = Date.now() - start;
   const output = options.getOutput();
-  if (!output) {
+  if (errorMessage || !output) {
     throw new AgentRunError(
-      `enkii: agent did not call ${options.outputToolName}.` +
-        (errorMessage ? ` Provider error: ${errorMessage}` : ""),
+      errorMessage
+        ? `enkii: provider failure: ${errorMessage}`
+        : `enkii: agent did not call ${options.outputToolName}.`,
       durationMs,
       toolCallCount,
       usage,

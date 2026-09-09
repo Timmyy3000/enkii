@@ -14,6 +14,10 @@
 
 import { readFile } from "fs/promises";
 import { basename } from "path";
+import {
+  encodeCheckpoint,
+  type ReviewCheckpoint,
+} from "../github/data/review-context";
 import type { Octokit } from "@octokit/rest";
 import {
   ValidatedPassSchema,
@@ -80,6 +84,7 @@ export async function postReviewFromValidated(args: {
   prNumber: number;
   marker: string;
   inlineCap: number;
+  checkpoint?: ReviewCheckpoint;
 }): Promise<PostReviewResult> {
   const { validated, octokit, owner, repo, prNumber, marker, inlineCap } = args;
 
@@ -109,16 +114,36 @@ export async function postReviewFromValidated(args: {
         ? "policy"
         : "code";
 
-  const summaryBody = buildSummaryBody({
-    marker,
-    summary: validated.reviewSummary?.body,
-    approved,
-    totalApproved: approved.length,
-    inlinePosted: inline.length,
-    spillover,
-    unresolved,
-    kind,
-  });
+  const withCheckpoint = (body: string): string => {
+    // Only the host may emit a reusable checkpoint, including on summary-only fallback.
+    const clean = body.replace(/<!-- enkii-checkpoint:[\s\S]*?-->/g, "");
+    const checkpoint = args.checkpoint;
+    if (
+      !checkpoint ||
+      validated.coverageComplete !== true ||
+      isIncompleteReview(validated.reviewSummary?.body) ||
+      checkpoint.head !== headSha ||
+      checkpoint.repository !== `${owner}/${repo}` ||
+      checkpoint.prNumber !== prNumber ||
+      checkpoint.kind !== kind
+    )
+      return clean;
+    const metadata = encodeCheckpoint({ ...checkpoint, findings: approved });
+    return clean.length + metadata.length <= 60_000 ? clean + metadata : clean;
+  };
+  const summaryBody = withCheckpoint(
+    buildSummaryBody({
+      marker,
+      summary: validated.reviewSummary?.body,
+      approved,
+      totalApproved: approved.length,
+      inlinePosted: inline.length,
+      spillover,
+      unresolved,
+      kind,
+      coverageComplete: validated.coverageComplete,
+    }),
+  );
 
   const inlineComments = inline.map(toGitHubReviewComment);
 
@@ -160,16 +185,19 @@ export async function postReviewFromValidated(args: {
       prNumber,
       headSha,
       event: "COMMENT",
-      body: buildSummaryBody({
-        marker,
-        summary: validated.reviewSummary?.body,
-        approved,
-        totalApproved: approved.length,
-        inlinePosted: 0,
-        spillover,
-        unresolved: [...unresolved, ...inline],
-        kind,
-      }),
+      body: withCheckpoint(
+        buildSummaryBody({
+          marker,
+          summary: validated.reviewSummary?.body,
+          approved,
+          totalApproved: approved.length,
+          inlinePosted: 0,
+          spillover,
+          unresolved: [...unresolved, ...inline],
+          kind,
+          coverageComplete: validated.coverageComplete,
+        }),
+      ),
       comments: [],
     });
     inlinePosted = 0;
@@ -272,6 +300,7 @@ function buildSummaryBody(args: {
   spillover: Candidate[];
   unresolved?: Candidate[];
   kind?: "code" | "security" | "policy";
+  coverageComplete?: boolean;
 }): string {
   const {
     marker,
@@ -283,12 +312,15 @@ function buildSummaryBody(args: {
     kind = "code",
   } = args;
   const parts: string[] = [marker, brandedHeader(kind)];
-  const incompleteReview = isIncompleteReview(summary);
+  const incompleteReview =
+    args.coverageComplete === false || isIncompleteReview(summary);
   const score = computeMergeabilityScore({
     approved,
     totalApproved,
     incompleteReview,
   });
+  if (incompleteReview)
+    parts.push("**Coverage: incomplete. Manual review required.**");
 
   if (summary) {
     parts.push("### Summary");

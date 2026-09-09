@@ -8,6 +8,7 @@ describe("runAgent", () => {
   test("retries once when the agent returns without calling submit_review", async () => {
     const prompts: string[] = [];
     let attempts = 0;
+    let sessions = 0;
     let submitted: Static<typeof SubmitCandidatesParameters> | undefined;
 
     const result = await runAgent<Static<typeof SubmitCandidatesParameters>>({
@@ -24,6 +25,7 @@ describe("runAgent", () => {
         }),
       ],
       createAgent: (args) => {
+        sessions++;
         const tools = args?.initialState?.tools;
         if (!tools) {
           throw new Error("agent tools missing");
@@ -98,6 +100,8 @@ describe("runAgent", () => {
     expect(result.output.reviewSummary?.body).toBe("No security findings.");
     expect(result.toolCallCount).toBe(2);
     expect(prompts).toHaveLength(2);
+    expect(sessions).toBe(1);
+    expect(prompts[1]).not.toContain("Inspect files, then call submit_review.");
     expect(prompts[1]).toContain(
       "Previous attempt 1 ended without calling `submit_review`.",
     );
@@ -125,5 +129,150 @@ describe("runAgent", () => {
         }),
       }),
     ).rejects.toThrow("enkii: agent did not call submit_review.");
+  });
+
+  test("permanent provider failures do not start missing-output repairs", async () => {
+    let prompts = 0;
+    await expect(
+      runAgent({
+        systemPrompt: "system",
+        userPrompt: "review",
+        model: "deepseek/deepseek-v4-pro",
+        tools: [],
+        outputToolName: "submit_review",
+        getOutput: () => undefined,
+        transientRetries: 1,
+        missingOutputRetries: 1,
+        createAgent: () => {
+          let subscriber: any;
+          return {
+            subscribe(callback) {
+              subscriber = callback;
+              return () => {};
+            },
+            async prompt() {
+              prompts++;
+              subscriber({
+                type: "message_end",
+                message: {
+                  role: "assistant",
+                  errorMessage: "402 insufficient credits",
+                  usage: {
+                    input: 0,
+                    output: 0,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                    totalTokens: 0,
+                    cost: {
+                      input: 0,
+                      output: 0,
+                      cacheRead: 0,
+                      cacheWrite: 0,
+                      total: 0,
+                    },
+                  },
+                },
+              });
+            },
+            abort() {},
+          };
+        },
+      }),
+    ).rejects.toThrow("402 insufficient credits");
+    expect(prompts).toBe(1);
+  });
+
+  test("timeout cannot cascade into fresh twenty-minute attempts or an output repair", async () => {
+    let sessions = 0;
+    let prompts = 0;
+    await expect(
+      runAgent({
+        systemPrompt: "system",
+        userPrompt: "review",
+        model: "deepseek/deepseek-v4-pro",
+        tools: [],
+        outputToolName: "submit_review",
+        getOutput: () => undefined,
+        timeoutMs: 20,
+        transientRetries: 1,
+        missingOutputRetries: 1,
+        createAgent: () => {
+          sessions++;
+          let complete!: () => void;
+          return {
+            subscribe() {
+              return () => {};
+            },
+            async prompt() {
+              prompts++;
+              await new Promise<void>((resolve) => {
+                complete = resolve;
+              });
+            },
+            abort() {
+              complete();
+            },
+          };
+        },
+      }),
+    ).rejects.toThrow("timed out");
+    expect(sessions).toBe(1);
+    expect(prompts).toBe(1);
+  });
+
+  test("repairs and transient retries retain accumulated usage", async () => {
+    let sessions = 0;
+    let submitted: string | undefined;
+    let prompts = 0;
+    const result = await runAgent({
+      systemPrompt: "system",
+      userPrompt: "review",
+      model: "deepseek/deepseek-v4-pro",
+      tools: [],
+      outputToolName: "submit_review",
+      getOutput: () => submitted,
+      transientRetries: 1,
+      missingOutputRetries: 1,
+      createAgent: () => {
+        sessions++;
+        let subscriber: any;
+        return {
+          subscribe(callback) {
+            subscriber = callback;
+            return () => {};
+          },
+          async prompt() {
+            prompts++;
+            subscriber({
+              type: "message_end",
+              message: {
+                role: "assistant",
+                errorMessage: prompts === 1 ? "connection reset" : undefined,
+                usage: {
+                  input: 10,
+                  output: 2,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                  totalTokens: 12,
+                  cost: {
+                    input: 1,
+                    output: 1,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                    total: 2,
+                  },
+                },
+              },
+            });
+            if (prompts === 3) submitted = "done";
+          },
+          abort() {},
+        };
+      },
+    });
+    expect(sessions).toBe(2);
+    expect(prompts).toBe(3);
+    expect(result.usage.totalTokens).toBe(36);
+    expect(result.usage.cost.total).toBe(6);
   });
 });

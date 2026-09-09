@@ -58,6 +58,15 @@ import {
   settleReviewLanes,
 } from "./review-lanes";
 import { reportUsage } from "../usage/drain";
+import {
+  findCheckpoint,
+  prepareReviewContext,
+  prepareIncrementalScope,
+  reviewConfigHash,
+  runtimeFingerprint,
+  type ReviewCheckpoint,
+  type PostedReview,
+} from "../github/data/review-context";
 
 function envFlag(name: string, defaultValue: boolean): boolean {
   const raw = process.env[name];
@@ -302,6 +311,56 @@ async function run(): Promise<void> {
       githubToken,
       ignoreExistingComments: benchmarkMode,
     });
+    // GitHub's diff endpoint follows the live PR. Never bind that diff to a
+    // checkpoint if the PR moved while artifacts were being fetched.
+    const artifactSnapshot = await fetchPRBranchData({
+      octokits: octokit,
+      repository: { owner, repo },
+      prNumber: context.entityNumber,
+    });
+    if (
+      !artifactSnapshot ||
+      artifactSnapshot.headRefOid !== prBranch.headRefOid ||
+      artifactSnapshot.baseRefOid !== prBranch.baseRefOid
+    ) {
+      throw new Error(
+        "enkii: PR head/base changed while preparing review artifacts; rerun on the current head.",
+      );
+    }
+    const fullPreparedContext = await prepareReviewContext(
+      reviewArtifacts,
+      workspacePath,
+      prBranch.headRefOid,
+    );
+    const incrementalEnabled =
+      envFlag("INCREMENTAL_REVIEW", true) && !benchmarkMode && !isForkPR;
+    const canReuse =
+      incrementalEnabled &&
+      dispatch.command === "auto" &&
+      "action" in context.payload &&
+      context.payload.action === "synchronize";
+    let previousReviews: PostedReview[] = [];
+    let runtime = "";
+    if (incrementalEnabled) {
+      try {
+        runtime = await runtimeFingerprint(actionPath);
+        if (canReuse)
+          previousReviews = await octokit.rest.paginate(
+            octokit.rest.pulls.listReviews,
+            {
+              owner,
+              repo,
+              pull_number: context.entityNumber,
+              per_page: 100,
+            },
+          );
+      } catch {
+        console.warn(
+          "enkii: review checkpoints unavailable; using full review.",
+        );
+      }
+    }
+    const checkpoints = new Map<ReviewKind, ReviewCheckpoint>();
 
     if (benchmarkMode) {
       console.log(
@@ -309,27 +368,79 @@ async function run(): Promise<void> {
       );
     }
 
-    const buildContext = (
+    const buildContext = async (
       skillContent: string,
       includeSuggestions: boolean,
-    ): PreparedContext => ({
-      repository: `${owner}/${repo}`,
-      triggerPhrase: "@enkii",
-      githubContext: context,
-      prBranchData: {
-        headRefName: prBranch.headRefName,
-        headRefOid: prBranch.headRefOid,
-      },
-      reviewArtifacts,
-      skillContent,
-      includeSuggestions,
-      eventData: {
-        eventName: "pull_request",
-        isPR: true,
-        prNumber: String(context.entityNumber),
-        baseBranch: prBranch.baseRefName,
-      },
-    });
+      kind: ReviewKind,
+      model: string,
+    ): Promise<PreparedContext> => {
+      const expected = {
+        repository: `${owner}/${repo}`,
+        prNumber: context.entityNumber,
+        kind,
+        base: prBranch.baseRefOid ?? "",
+        config: reviewConfigHash(skillContent, model, enableValidator, runtime),
+      };
+      const scope = await prepareIncrementalScope({
+        checkpoint:
+          canReuse && runtime && dispatch.postingActorId
+            ? findCheckpoint(previousReviews, expected, dispatch.postingActorId)
+            : undefined,
+        cwd: workspacePath,
+        head: prBranch.headRefOid,
+        base: expected.base,
+        artifacts: reviewArtifacts,
+        kind,
+        promptsDir,
+      });
+      const scopedArtifacts = {
+        ...reviewArtifacts,
+        fullDiffPath: reviewArtifacts.diffPath,
+        diffPath: scope.diffPath ?? reviewArtifacts.diffPath,
+      };
+      scopedArtifacts.preparedContext = scope.incremental
+        ? await prepareReviewContext(
+            scopedArtifacts,
+            workspacePath,
+            prBranch.headRefOid,
+          )
+        : await fullPreparedContext;
+      if (
+        incrementalEnabled &&
+        runtime &&
+        /^[a-f0-9]{40}$/.test(expected.base)
+      ) {
+        checkpoints.set(kind, {
+          version: 1,
+          ...expected,
+          head: prBranch.headRefOid,
+          findings: [],
+        });
+      }
+      console.log(
+        `enkii:${kind}: ${scope.incremental ? "incremental" : "full"} review scope; ${scope.priorFindingCount} prior findings to recheck`,
+      );
+      return {
+        repository: `${owner}/${repo}`,
+        triggerPhrase: "@enkii",
+        githubContext: context,
+        prBranchData: {
+          headRefName: prBranch.headRefName,
+          headRefOid: prBranch.headRefOid,
+        },
+        reviewArtifacts: scopedArtifacts,
+        skillContent,
+        includeSuggestions,
+        reviewScope: scope.scope,
+        priorFindingCount: scope.priorFindingCount,
+        eventData: {
+          eventName: "pull_request",
+          isPR: true,
+          prNumber: String(context.entityNumber),
+          baseBranch: prBranch.baseRefName,
+        },
+      };
+    };
 
     const selectedKinds = new Set(selection.kinds);
     const lanes: ReviewLane<RunReviewResult, ReviewKind>[] = [];
@@ -347,7 +458,12 @@ async function run(): Promise<void> {
           });
           logSkill("review", reviewSkillPath, skill);
           return runCodeReview({
-            preparedContext: buildContext(skill.content, true),
+            preparedContext: await buildContext(
+              skill.content,
+              true,
+              "code",
+              reviewModel,
+            ),
             workingDir: workspacePath,
             reviewModel,
             promptsDir,
@@ -370,7 +486,12 @@ async function run(): Promise<void> {
           });
           logSkill("security", securitySkillPath, skill);
           return runSecurityReview({
-            preparedContext: buildContext(skill.content, false),
+            preparedContext: await buildContext(
+              skill.content,
+              false,
+              "security",
+              securityModel,
+            ),
             workingDir: workspacePath,
             securityModel,
             promptsDir,
@@ -393,7 +514,12 @@ async function run(): Promise<void> {
             `enkii: loaded policy review prompt from PR HEAD at ${skill.source}`,
           );
           return runPolicyReview({
-            preparedContext: buildContext(skill.content, false),
+            preparedContext: await buildContext(
+              skill.content,
+              false,
+              "policy",
+              policyModel,
+            ),
             workingDir: workspacePath,
             policyModel,
             promptsDir,
@@ -408,8 +534,8 @@ async function run(): Promise<void> {
         `(validator ${enableValidator ? "on" : "off"})`,
     );
     const restOctokit = octokit.rest;
-    const settled = await settleReviewLanes(lanes, async (result) =>
-      postReviewFromValidated({
+    const settled = await settleReviewLanes(lanes, async (result) => {
+      const post = await postReviewFromValidated({
         validated: result.validated,
         octokit: restOctokit,
         owner,
@@ -417,8 +543,14 @@ async function run(): Promise<void> {
         prNumber: context.entityNumber,
         marker: markerForKind(result.kind),
         inlineCap: 20,
-      }),
-    );
+        checkpoint: checkpoints.get(result.kind),
+      });
+      console.log(
+        `enkii: posted ${result.kind} review #${post.reviewId} immediately after lane completion`,
+      );
+      core.setOutput(`${result.kind}_review_id`, String(post.reviewId));
+      return post;
+    });
 
     for (const entry of settled.posted) {
       const { kind, post } = entry;
