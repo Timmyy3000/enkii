@@ -246,6 +246,9 @@ If you’re asking an AI agent to set up enkii in a repository, give it this che
 
 ## Reliability notes
 
+- When GitHub's PR diff API returns HTTP 406 (including its 20,000-line limit), enkii generates the complete diff locally from the verified PR head and merge base of the recorded base/head commits. All configured review lanes receive the same artifact; external diff drivers and text conversion are disabled.
+- The local fallback requires `actions/checkout` with `fetch-depth: 0`, Git 2.36+ (`fetch --refetch`), and a successful fetch of the exact base commit from the PR's target repository. It uses the configured `GITHUB_SERVER_URL` HTTPS endpoint and existing checkout Git credentials, so a fork-owned `origin` does not need the upstream base commit. Refetching verifies target access even when the commit is cached, at the cost of transferring its reachable history again. A mismatched head, unavailable base, shallow history, missing/ambiguous merge base, or output over 50 MiB stops review instead of using stale refs or truncating the diff.
+
 - enkii now updates its tracking comment when a run fails, instead of silently leaving a dangling “working…” state.
 - If inline anchors fail, enkii preserves findings in summary notes rather than dropping the entire review.
 - Avoid `pull_request_review: submitted` with `cancel-in-progress: true` in the same workflow, or runs can self-cancel when enkii submits its own review.

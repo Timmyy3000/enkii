@@ -7,7 +7,7 @@ import type { GitHubPullRequest } from "../types";
  */
 export type PRBranchData = {
   baseRefName: string;
-  baseRefOid?: string;
+  baseRefOid: string;
   headRefName: string;
   headRefOid: string;
   title: string;
