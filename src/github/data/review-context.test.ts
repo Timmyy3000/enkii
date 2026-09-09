@@ -13,6 +13,7 @@ import { tmpdir } from "os";
 import { dirname, join } from "path";
 import {
   encodeCheckpoint,
+  checkpointSnapshotMatches,
   findCheckpoint,
   incrementalDiff,
   prepareIncrementalScope,
@@ -24,6 +25,30 @@ import {
 } from "./review-context";
 
 const roots: string[] = [];
+
+describe("artifact snapshot", () => {
+  const expected = { headRefOid: "a".repeat(40), baseRefOid: "b".repeat(40) };
+  test("allows checkpointing only with the same head and base", () => {
+    expect(checkpointSnapshotMatches(expected, { ...expected })).toBe(true);
+  });
+  test("a base move permits the full review but disables checkpoint consumption and creation", () => {
+    expect(
+      checkpointSnapshotMatches(expected, {
+        ...expected,
+        baseRefOid: "c".repeat(40),
+      }),
+    ).toBe(false);
+  });
+  test("head moves and missing snapshots still stop the review", () => {
+    expect(() =>
+      checkpointSnapshotMatches(expected, {
+        ...expected,
+        headRefOid: "c".repeat(40),
+      }),
+    ).toThrow("PR head");
+    expect(() => checkpointSnapshotMatches(expected, null)).toThrow("PR head");
+  });
+});
 afterEach(async () => {
   for (const root of roots.splice(0))
     await rm(root, { recursive: true, force: true });
