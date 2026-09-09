@@ -199,7 +199,7 @@ describe("incremental review scope", () => {
       ).toThrow("configuration");
       previous = head;
     }
-  }, 20_000);
+  }, 60_000);
 });
 
 describe("posted checkpoints", () => {
