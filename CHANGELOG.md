@@ -4,6 +4,12 @@ All notable changes to enkii will be documented here. Format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Changed
+
+- Publish each review lane as soon as it finishes, without waiting for slower lanes.
+- Repair missing structured output in the same agent session and share one timeout budget across retries within each pass.
+- Prepare bounded review context upfront and reuse completed lane coverage for eligible incremental updates, with prior-finding rechecks and conservative full-review fallbacks.
+
 ## [0.2.0-beta.6] — 2026-08-19
 
 ### Changed
