@@ -153,6 +153,7 @@ uses: Timmyy3000/enkii@v0.2.0-beta.4
 | `policy_review_model` | no | `""` | Policy review model; empty inherits `review_model` |
 | `enable_validator` | no | `"false"` | Two-pass review validation |
 | `run_security` | no | `"true"` | Auto-run security review on PR events |
+| `incremental_review` | no | `"true"` | Reuse completed lane coverage on eligible source-only PR updates; falls back to full review when reuse cannot be verified |
 
 ## Action outputs
 
@@ -164,6 +165,18 @@ uses: Timmyy3000/enkii@v0.2.0-beta.4
 | `policy_review_id` | GitHub review ID for policy review post (if posted) |
 
 ## Customizing review behavior
+
+### Review speed and coverage
+
+- Each code, security, or policy lane posts as soon as it completes. Slow or failed lanes do not hold back successful results.
+- A missing structured submission gets one repair prompt in the existing agent session, preserving the evidence it already read. Provider failures are not treated as missing submissions.
+- `ENKII_AGENT_TIMEOUT_MS` is a **total budget per pass**, including transient retries and output repair (default: 20 minutes). A timeout reports failure rather than restarting for another 20 minutes. Optional validation is a separate pass with its own budget.
+- Bounded context includes a diff/hunk index, description, compact comments and source excerpts around changed hunks. Omitted context is explicitly labeled and the original files remain available to the reviewer.
+- Automatic `synchronize` events can review the delta since that lane's last successfully posted, complete review. Every prior finding must be rechecked, including findings preserved only in the summary. The reviewer must inspect affected callers, dependencies and contracts even when those files are unchanged.
+
+Incremental reuse requires matching repository, PR, posting bot identity, base commit, configured model ID, prompt/runtime and compatible Git history. Enkii conservatively runs a full review for guide/configuration/non-source changes, changed bases or merge bases, divergent or missing history, shallow checkouts, fork PRs, unavailable/oversized checkpoints or unknown posting identity (including sticky tracking comments). Explicit `/review`, `/security`, and `/benchmark` commands always run a full review. Existing reviews without a checkpoint require one full review before reuse becomes possible. After changing a provider preset behind the same ID, explicitly rerun each affected lane in full before relying on incremental coverage.
+
+Checkpoints live in hidden metadata on posted reviews; no database or service is required. Incomplete coverage never creates a checkpoint or receives a clean mergeability verdict. Set `incremental_review: "false"` to require full reviews on every update. Model/provider latency still affects review time; logs include per-pass duration, tool calls, tokens and immediate publication events.
 
 Enkii’s behavior is prompt/skill-driven.
 
