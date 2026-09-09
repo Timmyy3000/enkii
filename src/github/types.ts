@@ -55,7 +55,7 @@ export type GitHubPullRequest = {
   body: string;
   author: GitHubAuthor;
   baseRefName: string;
-  baseRefOid?: string;
+  baseRefOid: string;
   headRefName: string;
   headRefOid: string;
   createdAt: string;

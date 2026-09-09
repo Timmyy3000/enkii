@@ -309,6 +309,8 @@ async function run(): Promise<void> {
       title: prBranch.title,
       body: prBranch.body,
       githubToken,
+      expectedBaseSha: prBranch.baseRefOid,
+      expectedHeadSha: prBranch.headRefOid,
       ignoreExistingComments: benchmarkMode,
     });
     // GitHub's diff endpoint follows the live PR. Never bind that diff to a
