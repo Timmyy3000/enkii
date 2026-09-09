@@ -7,6 +7,21 @@ import { CandidateSchema, type Candidate } from "../../runtime/schemas";
 import type { ReviewArtifacts } from "../../prompts/types";
 
 const SHA = z.string().regex(/^[a-f0-9]{40}$/);
+
+export function checkpointSnapshotMatches(
+  expected: { headRefOid: string; baseRefOid: string },
+  current: { headRefOid: string; baseRefOid: string } | null,
+): boolean {
+  if (!current || current.headRefOid !== expected.headRefOid) {
+    throw new Error(
+      "enkii: PR head changed or is unavailable after preparing review artifacts; rerun on the current head.",
+    );
+  }
+  // A target-branch push does not schedule another PR run. Preserve this full
+  // review, but neither consume nor emit checkpoints with an uncertain base.
+  return current.baseRefOid === expected.baseRefOid;
+}
+
 const CheckpointSchema = z.object({
   version: z.literal(1),
   repository: z.string(),

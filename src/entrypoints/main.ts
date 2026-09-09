@@ -60,6 +60,7 @@ import {
 import { reportUsage } from "../usage/drain";
 import {
   findCheckpoint,
+  checkpointSnapshotMatches,
   prepareReviewContext,
   prepareIncrementalScope,
   reviewConfigHash,
@@ -320,13 +321,13 @@ async function run(): Promise<void> {
       repository: { owner, repo },
       prNumber: context.entityNumber,
     });
-    if (
-      !artifactSnapshot ||
-      artifactSnapshot.headRefOid !== prBranch.headRefOid ||
-      artifactSnapshot.baseRefOid !== prBranch.baseRefOid
-    ) {
-      throw new Error(
-        "enkii: PR head/base changed while preparing review artifacts; rerun on the current head.",
+    const checkpointSnapshotSafe = checkpointSnapshotMatches(
+      prBranch,
+      artifactSnapshot,
+    );
+    if (!checkpointSnapshotSafe) {
+      console.warn(
+        "enkii: base moved during artifact preparation; continuing with a full review without checkpoint reuse or publication.",
       );
     }
     const fullPreparedContext = await prepareReviewContext(
@@ -335,7 +336,10 @@ async function run(): Promise<void> {
       prBranch.headRefOid,
     );
     const incrementalEnabled =
-      envFlag("INCREMENTAL_REVIEW", true) && !benchmarkMode && !isForkPR;
+      checkpointSnapshotSafe &&
+      envFlag("INCREMENTAL_REVIEW", true) &&
+      !benchmarkMode &&
+      !isForkPR;
     const canReuse =
       incrementalEnabled &&
       dispatch.command === "auto" &&
