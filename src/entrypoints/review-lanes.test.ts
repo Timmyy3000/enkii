@@ -86,6 +86,45 @@ describe("selectReviewKinds", () => {
 });
 
 describe("settleReviewLanes", () => {
+  test("publishes a completed lane while another lane is still pending", async () => {
+    let finishSlow!: (value: { kind: "security" }) => void;
+    let firstPosted!: () => void;
+    const published = new Promise<void>((resolve) => {
+      firstPosted = resolve;
+    });
+    const slow = new Promise<{ kind: "security" }>((resolve) => {
+      finishSlow = resolve;
+    });
+    const posts: string[] = [];
+    const result = settleReviewLanes<
+      ReviewLaneKind,
+      { kind: ReviewLaneKind },
+      string
+    >(
+      [
+        { kind: "code", execute: async () => ({ kind: "code" }) },
+        { kind: "security", execute: () => slow },
+      ],
+      async (review) => {
+        posts.push(review.kind);
+        firstPosted();
+        return review.kind;
+      },
+    );
+    try {
+      await Promise.race([
+        published,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("fast lane was blocked")), 500),
+        ),
+      ]);
+      expect(posts).toEqual(["code"]);
+    } finally {
+      finishSlow({ kind: "security" });
+      await result;
+    }
+    expect((await result).posted).toHaveLength(2);
+  });
   test("posts successful lanes after another lane execution fails", async () => {
     const posted: string[] = [];
     const lanes: ReviewLane<

@@ -109,8 +109,12 @@ export type EventData =
 
 export type ReviewArtifacts = {
   diffPath: string;
+  /** Original PR diff when diffPath is the assigned incremental delta. */
+  fullDiffPath?: string;
   commentsPath: string;
   descriptionPath: string;
+  /** Bounded context prepared once for all lanes; original artifacts remain available. */
+  preparedContext?: string;
 };
 
 export type PreparedContext = CommonFields & {
@@ -128,4 +132,8 @@ export type PreparedContext = CommonFields & {
   securitySkillPath?: string;
   /** Skill markdown content already loaded by the orchestrator and ready for inlining into the prompt. */
   skillContent?: string;
+  /** Lane-specific scope/evidence, prepared by the host rather than rediscovered by the model. */
+  reviewScope?: string;
+  priorFindingCount?: number;
+  candidatesPath?: string;
 };

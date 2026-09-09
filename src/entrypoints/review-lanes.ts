@@ -73,32 +73,24 @@ export async function settleReviewLanes<
   posted: Array<{ kind: K; review: T; post: P }>;
   errors: ReviewLaneError<K>[];
 }> {
-  const executionSettled = await Promise.allSettled(
-    lanes.map((lane) => lane.execute()),
-  );
   const errors: ReviewLaneError<K>[] = [];
-  const completed: T[] = [];
-
-  executionSettled.forEach((result, index) => {
-    const lane = lanes[index]!;
-    if (result.status === "fulfilled") completed.push(result.value);
-    else
-      errors.push({ kind: lane.kind, phase: "execute", error: result.reason });
-  });
-
-  const postSettled = await Promise.allSettled(
-    completed.map(async (review) => ({ review, post: await post(review) })),
-  );
   const posted: Array<{ kind: K; review: T; post: P }> = [];
-
-  postSettled.forEach((result, index) => {
-    const review = completed[index]!;
-    if (result.status === "fulfilled") {
-      posted.push({ kind: review.kind, ...result.value });
-    } else {
-      errors.push({ kind: review.kind, phase: "post", error: result.reason });
-    }
-  });
+  await Promise.all(
+    lanes.map(async (lane) => {
+      let review: T;
+      try {
+        review = await lane.execute();
+      } catch (error) {
+        errors.push({ kind: lane.kind, phase: "execute", error });
+        return;
+      }
+      try {
+        posted.push({ kind: lane.kind, review, post: await post(review) });
+      } catch (error) {
+        errors.push({ kind: lane.kind, phase: "post", error });
+      }
+    }),
+  );
 
   return { posted, errors };
 }
