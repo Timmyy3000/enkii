@@ -44,6 +44,10 @@ inputs:
     description: "On automatic PR events, run the security review alongside the code review (in parallel). Set 'false' to require explicit @enkii /security. Default: true."
     required: false
     default: "true"
+  incremental_review:
+    description: "Reuse complete per-lane reviews on synchronize events; unsafe or unavailable checkpoints fall back to full review."
+    required: false
+    default: "true"
 
 outputs:
   contains_trigger:
@@ -95,3 +99,4 @@ runs:
         POLICY_REVIEW_MODEL: ${{ inputs.policy_review_model }}
         ENABLE_VALIDATOR: ${{ inputs.enable_validator }}
         RUN_SECURITY: ${{ inputs.run_security }}
+        INCREMENTAL_REVIEW: ${{ inputs.incremental_review }}

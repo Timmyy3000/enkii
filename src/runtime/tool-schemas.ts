@@ -22,6 +22,21 @@ const CandidateSchema = Type.Object({
 
 export const SubmitCandidatesParameters = Type.Object({
   version: Type.Literal(1),
+  coverageComplete: Type.Optional(
+    Type.Boolean({
+      description:
+        "True only after completing the assigned review scope, cross-file impact checks and all prior finding rechecks.",
+    }),
+  ),
+  priorFindingDispositions: Type.Optional(
+    Type.Array(
+      Type.Object({
+        index: Type.Integer({ minimum: 0 }),
+        commentIndex: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]),
+        reason: Type.String({ minLength: 1 }),
+      }),
+    ),
+  ),
   meta: Type.Object({
     repo: Type.String(),
     prNumber: Type.Union([Type.Number(), Type.String()]),
@@ -46,11 +61,12 @@ const ApprovedValidatedItemSchema = Type.Object({
 const RejectedValidatedItemSchema = Type.Object({
   status: Type.Literal("rejected"),
   candidate: CandidateSchema,
-  reason: Type.String(),
+  reason: Type.String({ minLength: 1 }),
 });
 
 export const SubmitValidatedParameters = Type.Object({
   version: Type.Literal(1),
+  coverageComplete: Type.Optional(Type.Boolean()),
   meta: Type.Object({
     repo: Type.String(),
     prNumber: Type.Union([Type.Number(), Type.String()]),

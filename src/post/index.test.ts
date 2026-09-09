@@ -6,6 +6,10 @@ import {
   postReviewFromValidated,
 } from ".";
 import type { ValidatedPass } from "../runtime/schemas";
+import {
+  findCheckpoint,
+  type ReviewCheckpoint,
+} from "../github/data/review-context";
 
 function makeValidated(): ValidatedPass {
   return {
@@ -46,6 +50,79 @@ function makeValidated(): ValidatedPass {
 }
 
 describe("postReviewFromValidated", () => {
+  test("checkpoint survives summary fallback with all findings, but never incomplete coverage", async () => {
+    const checkpoint: ReviewCheckpoint = {
+      version: 1,
+      repository: "Docsyde/docsyde-backend",
+      prNumber: 294,
+      kind: "code",
+      base: "b".repeat(40),
+      head: "a".repeat(40),
+      config: "config",
+      findings: [],
+    };
+    for (const coverageComplete of [true, false, undefined]) {
+      const calls: any[] = [];
+      const octokit = {
+        paginate: async () => [
+          {
+            filename: "src/service.ts",
+            patch: "@@ -10,2 +10,3 @@\n context\n+added\n context",
+          },
+        ],
+        rest: {
+          pulls: {
+            listFiles() {},
+            createReview: async (args: any) => {
+              calls.push(args);
+              if (args.comments.length)
+                throw Object.assign(new Error("line could not be resolved"), {
+                  status: 422,
+                });
+              return { data: { id: 1 } };
+            },
+          },
+        },
+      } as unknown as Octokit;
+      const validated = makeValidated();
+      validated.meta.headSha = checkpoint.head;
+      validated.coverageComplete = coverageComplete;
+      // A model-supplied marker must never survive as host state.
+      validated.reviewSummary!.body += "\n<!-- enkii-checkpoint:ZmFrZQ== -->";
+      const post = await postReviewFromValidated({
+        validated,
+        octokit,
+        owner: "Docsyde",
+        repo: "docsyde-backend",
+        prNumber: 294,
+        marker: ENKII_REVIEW_MARKER,
+        inlineCap: 20,
+        checkpoint,
+      });
+      expect(post.summarized).toBe(2);
+      const body = calls.at(-1).body;
+      expect(body).not.toContain("ZmFrZQ==");
+      const decoded = findCheckpoint(
+        [
+          {
+            body,
+            commit_id: checkpoint.head,
+            state: "COMMENTED",
+            user: { login: "github-actions[bot]", type: "Bot" },
+          },
+        ],
+        checkpoint,
+      );
+      if (coverageComplete === true) expect(decoded?.findings).toHaveLength(2);
+      else expect(decoded).toBeUndefined();
+      if (coverageComplete === false) {
+        expect(body).toContain("Coverage: incomplete");
+        expect(body).not.toContain(
+          "Safe to merge from this review's perspective",
+        );
+      }
+    }
+  });
   test("summarizes comments whose lines are not resolvable in the PR patch", async () => {
     const createReviewCalls: unknown[] = [];
     const octokit = {

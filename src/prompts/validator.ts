@@ -15,7 +15,9 @@ export function generateReviewValidatorPrompt(
   const prBaseRef = context.eventData.baseBranch ?? "unknown";
 
   const diffPath =
-    context.reviewArtifacts?.diffPath ?? "$RUNNER_TEMP/enkii-prompts/pr.diff";
+    context.reviewArtifacts?.fullDiffPath ??
+    context.reviewArtifacts?.diffPath ??
+    "$RUNNER_TEMP/enkii-prompts/pr.diff";
   const commentsPath =
     context.reviewArtifacts?.commentsPath ??
     "$RUNNER_TEMP/enkii-prompts/existing_comments.json";
@@ -24,6 +26,7 @@ export function generateReviewValidatorPrompt(
     "$RUNNER_TEMP/enkii-prompts/pr_description.txt";
 
   const reviewCandidatesPath =
+    context.candidatesPath ??
     process.env.REVIEW_CANDIDATES_PATH ??
     "$RUNNER_TEMP/enkii-prompts/review_candidates.json";
   const includeSuggestions = context.includeSuggestions !== false;
@@ -55,6 +58,8 @@ Read these files before validating:
 * Candidates: \`${reviewCandidatesPath}\`
 * Full PR Diff: \`${diffPath}\`
 * Existing Comments: \`${commentsPath}\`
+
+The full PR diff includes prior findings outside the latest update. Do not reject a retained finding merely because its hunk is absent from the incremental delta. Recheck its current code and claimed impact.
 
 If the diff is large, use Pi's \`read\` tool with offset/limit chunks. **Do not proceed until you have read enough diff context to validate every candidate.**
 

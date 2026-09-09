@@ -26,6 +26,16 @@ export const CandidateSchema = z.object({
 
 export const CandidatesPassSchema = z.object({
   version: z.literal(1),
+  coverageComplete: z.boolean().optional(),
+  priorFindingDispositions: z
+    .array(
+      z.object({
+        index: z.number().int().nonnegative(),
+        commentIndex: z.number().int().nonnegative().nullable(),
+        reason: z.string().min(1),
+      }),
+    )
+    .optional(),
   meta: z.object({
     repo: z.string(),
     prNumber: z.union([z.number(), z.string()]),
@@ -57,12 +67,13 @@ export const ValidatedItemSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("rejected"),
     candidate: CandidateSchema,
-    reason: z.string(),
+    reason: z.string().min(1),
   }),
 ]);
 
 export const ValidatedPassSchema = z.object({
   version: z.literal(1),
+  coverageComplete: z.boolean().optional(),
   meta: z.object({
     repo: z.string(),
     prNumber: z.union([z.number(), z.string()]),
