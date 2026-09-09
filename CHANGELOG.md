@@ -12,6 +12,8 @@ All notable changes to enkii will be documented here. Format follows [Keep a Cha
 
 ### Fixed
 
+- Preserve completed structured review output if a trailing provider request fails or the pass times out after submission.
+
 - Fall back directly to a complete, verified local Git merge-base diff when GitHub's PR diff endpoint returns HTTP 406, including diffs over its 20,000-line limit. Fetch the immutable base from the PR's target repository even when the checkout's origin is a fork, require full history, disable external diff/textconv, and fail rather than truncate artifacts above 50 MiB.
 
 ## [0.2.0-beta.6] — 2026-08-19

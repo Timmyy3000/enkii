@@ -5,6 +5,106 @@ import { createSubmitCandidatesTool } from "./tools/submit";
 import { runAgent } from "./run-agent";
 
 describe("runAgent", () => {
+  test.each(["provider event", "exception", "timeout"])(
+    "preserves completed structured output after a trailing %s",
+    async (failure) => {
+      let submitted: Static<typeof SubmitCandidatesParameters> | undefined;
+      let sessions = 0;
+      let prompts = 0;
+      const result = await runAgent({
+        systemPrompt: "system",
+        userPrompt: "review",
+        model: "deepseek/deepseek-v4-pro",
+        outputToolName: "submit_review",
+        getOutput: () => submitted,
+        timeoutMs: failure === "timeout" ? 20 : 1000,
+        transientRetries: 1,
+        missingOutputRetries: 1,
+        tools: [
+          createSubmitCandidatesTool((args) => {
+            submitted = args;
+          }),
+        ],
+        createAgent: (args) => {
+          sessions++;
+          let subscriber: any;
+          let complete: (() => void) | undefined;
+          return {
+            subscribe(callback) {
+              subscriber = callback;
+              return () => {};
+            },
+            async prompt() {
+              prompts++;
+              const tool = args!.initialState!.tools!.find(
+                (t) => t.name === "submit_review",
+              )!;
+              subscriber({
+                type: "tool_execution_start",
+                toolName: "submit_review",
+              });
+              await tool.execute("submitted", {
+                version: 1,
+                coverageComplete: true,
+                meta: {
+                  repo: "owner/repo",
+                  prNumber: 1,
+                  headSha: "a".repeat(40),
+                  baseRef: "main",
+                },
+                comments: [],
+                reviewSummary: { body: "Completed review." },
+              });
+              subscriber({
+                type: "tool_execution_end",
+                toolName: "submit_review",
+                isError: false,
+              });
+              if (failure === "exception") throw new Error("connection reset");
+              if (failure === "timeout") {
+                await new Promise<void>((resolve) => {
+                  complete = resolve;
+                });
+              } else {
+                subscriber({
+                  type: "message_end",
+                  message: {
+                    role: "assistant",
+                    errorMessage: "Provider finish_reason: error",
+                    usage: {
+                      input: 10,
+                      output: 2,
+                      cacheRead: 0,
+                      cacheWrite: 0,
+                      totalTokens: 12,
+                      cost: {
+                        input: 0,
+                        output: 0,
+                        cacheRead: 0,
+                        cacheWrite: 0,
+                        total: 0,
+                      },
+                    },
+                  },
+                });
+              }
+            },
+            abort() {
+              complete?.();
+            },
+          };
+        },
+      });
+      expect(result.output).toBe(submitted!);
+      expect(result.output.reviewSummary?.body).toBe("Completed review.");
+      expect(result.toolCallCount).toBe(1);
+      expect(sessions).toBe(1);
+      expect(prompts).toBe(1);
+      if (failure === "provider event")
+        expect(result.usage.totalTokens).toBe(12);
+    },
+  );
+
   test("retries once when the agent returns without calling submit_review", async () => {
     const prompts: string[] = [];
     let attempts = 0;

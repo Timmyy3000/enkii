@@ -271,7 +271,9 @@ async function runAgentAttempt<T>(
 
   const durationMs = Date.now() - start;
   const output = options.getOutput();
-  if (errorMessage || !output) {
+  // Submission is the terminal result. A trailing provider turn or timeout
+  // must not discard it; the caller still validates its schema and coverage.
+  if (!output) {
     throw new AgentRunError(
       errorMessage
         ? `enkii: provider failure: ${errorMessage}`
