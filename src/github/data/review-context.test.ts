@@ -15,6 +15,8 @@ import {
   encodeCheckpoint,
   checkpointSnapshotMatches,
   findCheckpoint,
+  inspectCheckpoint,
+  reuseEligibilityReason,
   incrementalDiff,
   prepareIncrementalScope,
   prepareReviewContext,
@@ -118,6 +120,8 @@ describe("incremental review scope", () => {
       promptsDir: f.cwd,
     });
     expect(scope.incremental).toBe(true);
+    expect(scope.reason).toBe("checkpoint_reused");
+    expect(scope.checkpointHead).toBe(f.prior);
     expect(scope.priorFindingCount).toBe(1);
     expect(scope.scope).toContain("Unresolved defect");
     expect(scope.scope).toContain(
@@ -153,6 +157,8 @@ describe("incremental review scope", () => {
       promptsDir: f.cwd,
     });
     expect(scope.incremental).toBe(false);
+    expect(scope.reason).toBe("shallow_history");
+    expect(scope.checkpointHead).toBe(f.prior);
     expect(scope.diffPath).toBeUndefined();
   });
   test("falls back on divergent history after a force push", async () => {
@@ -191,6 +197,15 @@ describe("incremental review scope", () => {
     expect(() => incrementalDiff(f.cwd, f.checkpoint, head, f.base)).toThrow(
       "non-source",
     );
+    const scope = await prepareIncrementalScope({
+      ...f,
+      head,
+      kind: "code",
+      promptsDir: f.cwd,
+    });
+    expect(scope.reason).toBe("non_source_or_guidance_changed");
+    expect(scope.checkpointHead).toBe(f.checkpoint.head);
+    expect(scope.incremental).toBe(false);
     git(f.cwd, "rm", "ENGINEERING.md");
     git(f.cwd, "commit", "-m", "remove guide");
     expect(() =>
@@ -243,6 +258,54 @@ describe("posted checkpoints", () => {
     commit_id: checkpoint.head,
     state: "COMMENTED",
     user: { login: "github-actions[bot]", type: "Bot" },
+  });
+  test("explains checkpoint mismatches without rejecting an older compatible checkpoint", () => {
+    const newer = {
+      ...checkpoint,
+      head: "c".repeat(40),
+      config: "old configuration",
+    };
+    const changed = {
+      ...review(),
+      body: "Review" + encodeCheckpoint(newer),
+      commit_id: newer.head,
+    };
+    expect(inspectCheckpoint([changed], checkpoint)).toEqual({
+      reason: "checkpoint_configuration_changed",
+      checkpointHead: newer.head,
+    });
+    expect(
+      inspectCheckpoint([review(), changed], checkpoint).checkpoint,
+    ).toEqual(checkpoint);
+    expect(
+      inspectCheckpoint([review()], { ...checkpoint, base: "d".repeat(40) })
+        .reason,
+    ).toBe("checkpoint_base_changed");
+    expect(
+      inspectCheckpoint(
+        [{ ...review(), commit_id: "d".repeat(40) }],
+        checkpoint,
+      ).reason,
+    ).toBe("checkpoint_commit_mismatch");
+    expect(
+      inspectCheckpoint(
+        [{ ...review(), commit_id: "d".repeat(40) }],
+        checkpoint,
+      ).checkpointHead,
+    ).toBe("d".repeat(40));
+    expect(
+      inspectCheckpoint([{ ...review(), commit_id: null }], checkpoint)
+        .checkpointHead,
+    ).toBeUndefined();
+    expect(inspectCheckpoint([], checkpoint)).toEqual({
+      reason: "no_compatible_checkpoint",
+    });
+    expect(
+      inspectCheckpoint(
+        [{ ...review(), user: { type: "User", login: "someone" } }],
+        checkpoint,
+      ),
+    ).toEqual({ reason: "no_compatible_checkpoint" });
   });
   test("round-trips only successfully submitted matching bot reviews", () => {
     expect(findCheckpoint([review()], checkpoint)).toEqual(checkpoint);
@@ -316,6 +379,56 @@ describe("posted checkpoints", () => {
     const original = await runtimeFingerprint(root);
     await writeFile(join(root, "bun.lock"), "updated dependency resolution");
     expect(await runtimeFingerprint(root)).not.toBe(original);
+  });
+});
+
+describe("incremental eligibility diagnostics", () => {
+  test("full scope retains the rejected checkpoint and gate reason without reading Git", async () => {
+    const scope = await prepareIncrementalScope({
+      cwd: "does-not-exist",
+      head: "a".repeat(40),
+      base: "b".repeat(40),
+      kind: "code",
+      promptsDir: "does-not-exist",
+      artifacts: {
+        diffPath: "full.diff",
+        descriptionPath: "description.txt",
+        commentsPath: "comments.json",
+      },
+      fallbackReason: "checkpoint_configuration_changed",
+      checkpointHead: "c".repeat(40),
+    });
+    expect(scope.incremental).toBe(false);
+    expect(scope.reason).toBe("checkpoint_configuration_changed");
+    expect(scope.checkpointHead).toBe("c".repeat(40));
+    expect(scope.diffPath).toBeUndefined();
+  });
+  const eligible = {
+    enabled: true,
+    snapshotSafe: true,
+    benchmark: false,
+    fork: false,
+    command: "auto",
+    eventAction: "synchronize",
+    runtime: "fingerprint",
+    actorId: 42,
+    lookupFailed: false,
+  };
+  test("eligible updates have no gate rejection", () => {
+    expect(reuseEligibilityReason(eligible)).toBeUndefined();
+  });
+  test.each([
+    [{ enabled: false }, "incremental_disabled"],
+    [{ snapshotSafe: false }, "base_moved_during_preparation"],
+    [{ benchmark: true }, "benchmark_full_review"],
+    [{ fork: true }, "fork_full_review"],
+    [{ command: "review" }, "explicit_full_review"],
+    [{ eventAction: "opened" }, "event_not_synchronize"],
+    [{ runtime: "" }, "runtime_unavailable"],
+    [{ actorId: undefined }, "posting_identity_unavailable"],
+    [{ lookupFailed: true }, "checkpoint_lookup_failed"],
+  ] as const)("reports gate %j as %s", (override, reason) => {
+    expect(reuseEligibilityReason({ ...eligible, ...override })).toBe(reason);
   });
 });
 

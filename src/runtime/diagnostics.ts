@@ -103,6 +103,9 @@ function sanitizeEvent(
     "stage",
     "errorCode",
     "reason",
+    "checkpointHead",
+    "eventName",
+    "eventAction",
   ]) {
     if (typeof event[key] === "string")
       safe[key] = redact(event[key]).slice(0, MAX_TEXT);
@@ -264,6 +267,17 @@ function renderSummary(
     "## Enkii diagnostics",
     "",
     `Reviewed head: \`${cell(identity.reviewedHead)}\` · Runtime: \`${cell(identity.runtime)}\` · Action: \`${cell(identity.actionRef)}\``,
+    "",
+    "### Incremental reuse",
+    "",
+    "| Lane | Scope | Reason | Checkpoint commit | Event |",
+    "| --- | --- | --- | --- | --- |",
+    ...events
+      .filter((event) => event.phase === "preparation" && event.kind)
+      .map(
+        (event) =>
+          `| ${cell(event.kind)} | ${cell(event.scope)} | ${cell(event.reason)} | ${cell(event.checkpointHead)} | ${cell(event.eventName)} / ${cell(event.eventAction)} |`,
+      ),
     "",
     "| Lane | Pass | Stage | Scope | Coverage | Model | Outcome | Duration | Tool / model | Tokens | Repairs | Error |",
     "| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
