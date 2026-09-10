@@ -22,7 +22,7 @@
  */
 
 import * as core from "@actions/core";
-import { join } from "path";
+import { basename, join } from "path";
 import { setupGitHubToken } from "../github/token";
 import { checkWritePermissions } from "../github/validation/permissions";
 import { createOctokit } from "../github/api/client";
@@ -68,6 +68,12 @@ import {
   type ReviewCheckpoint,
   type PostedReview,
 } from "../github/data/review-context";
+import {
+  flushDiagnostics,
+  initializeDiagnostics,
+  recordDiagnostic,
+  updateDiagnosticsIdentity,
+} from "../runtime/diagnostics";
 
 function envFlag(name: string, defaultValue: boolean): boolean {
   const raw = process.env[name];
@@ -173,6 +179,31 @@ async function run(): Promise<void> {
   let parsedContext: ReturnType<typeof parseGitHubContext> | null = null;
   let octokit: ReturnType<typeof createOctokit> | null = null;
   let trackingCommentId: number | undefined;
+  const diagnosticsEnabled = envFlag("ENKII_DIAGNOSTICS", true);
+  const runnerTemp = process.env.RUNNER_TEMP || "/tmp";
+  const diagnosticsDirectory =
+    process.env.ENKII_DIAGNOSTICS_DIR ||
+    join(
+      runnerTemp,
+      `enkii-diagnostics-${process.env.GITHUB_RUN_ID || "local"}-${process.env.GITHUB_RUN_ATTEMPT || "1"}`,
+    );
+  initializeDiagnostics({
+    enabled: diagnosticsEnabled,
+    directory: diagnosticsDirectory,
+    payloads: envFlag("ENKII_DIAGNOSTIC_PAYLOADS", false),
+    identity: {
+      repository: process.env.GITHUB_REPOSITORY,
+      runId: process.env.GITHUB_RUN_ID,
+      runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+      commit: process.env.GITHUB_SHA,
+      workflow: process.env.GITHUB_WORKFLOW,
+    },
+  });
+  if (diagnosticsEnabled)
+    core.setOutput("diagnostics_path", diagnosticsDirectory);
+  if (diagnosticsEnabled)
+    core.setOutput("diagnostics_name", basename(diagnosticsDirectory));
+  const preparationStartedAt = Date.now();
 
   try {
     validateEnv();
@@ -189,11 +220,11 @@ async function run(): Promise<void> {
 
     const actionPath = process.env.GITHUB_ACTION_PATH || process.cwd();
     const workspacePath = process.env.GITHUB_WORKSPACE || process.cwd();
-    const runnerTemp = process.env.RUNNER_TEMP || "/tmp";
     const promptsDir = join(runnerTemp, "enkii-prompts");
 
     const context = parseGitHubContext();
     parsedContext = context;
+    recordDiagnostic({ phase: "preparation", status: "started" });
     const githubToken = await setupGitHubToken();
     octokit = createOctokit(githubToken);
 
@@ -314,6 +345,13 @@ async function run(): Promise<void> {
       expectedHeadSha: prBranch.headRefOid,
       ignoreExistingComments: benchmarkMode,
     });
+    recordDiagnostic({
+      phase: "preparation",
+      status: "completed",
+      scope: benchmarkMode ? "benchmark" : "review",
+      durationMs: Date.now() - preparationStartedAt,
+    });
+    updateDiagnosticsIdentity({ reviewedHead: prBranch.headRefOid });
     // GitHub's diff endpoint follows the live PR. Never bind that diff to a
     // checkpoint if the PR moved while artifacts were being fetched.
     const artifactSnapshot = await fetchPRBranchData({
@@ -347,9 +385,13 @@ async function run(): Promise<void> {
       context.payload.action === "synchronize";
     let previousReviews: PostedReview[] = [];
     let runtime = "";
+    try {
+      runtime = await runtimeFingerprint(actionPath);
+    } catch {
+      console.warn("enkii: runtime fingerprint unavailable.");
+    }
     if (incrementalEnabled) {
       try {
-        runtime = await runtimeFingerprint(actionPath);
         if (canReuse)
           previousReviews = await octokit.rest.paginate(
             octokit.rest.pulls.listReviews,
@@ -366,6 +408,10 @@ async function run(): Promise<void> {
         );
       }
     }
+    updateDiagnosticsIdentity({
+      runtime,
+      actionRef: process.env.GITHUB_ACTION_REF,
+    });
     const checkpoints = new Map<ReviewKind, ReviewCheckpoint>();
 
     if (benchmarkMode) {
@@ -380,6 +426,7 @@ async function run(): Promise<void> {
       kind: ReviewKind,
       model: string,
     ): Promise<PreparedContext> => {
+      const contextStartedAt = Date.now();
       const expected = {
         repository: `${owner}/${repo}`,
         prNumber: context.entityNumber,
@@ -426,6 +473,15 @@ async function run(): Promise<void> {
       console.log(
         `enkii:${kind}: ${scope.incremental ? "incremental" : "full"} review scope; ${scope.priorFindingCount} prior findings to recheck`,
       );
+      recordDiagnostic({
+        kind,
+        phase: "preparation",
+        status: "completed",
+        scope: scope.incremental ? "incremental" : "full",
+        model,
+        durationMs: Date.now() - contextStartedAt,
+        priorFindingCount: scope.priorFindingCount,
+      });
       return {
         repository: `${owner}/${repo}`,
         triggerPhrase: "@enkii",
@@ -450,11 +506,42 @@ async function run(): Promise<void> {
 
     const selectedKinds = new Set(selection.kinds);
     const lanes: ReviewLane<RunReviewResult, ReviewKind>[] = [];
+    const withLaneDiagnostics = (
+      kind: ReviewKind,
+      execute: () => Promise<RunReviewResult>,
+    ): ReviewLane<RunReviewResult, ReviewKind> => ({
+      kind,
+      execute: async () => {
+        const startedAt = Date.now();
+        try {
+          const result = await execute();
+          recordDiagnostic({
+            kind,
+            phase: "execute",
+            status: "completed",
+            durationMs: Date.now() - startedAt,
+            coverage: result.validated.coverageComplete
+              ? "complete"
+              : "incomplete",
+          });
+          return result;
+        } catch (error) {
+          recordDiagnostic({
+            kind,
+            phase: "execute",
+            status: "failed",
+            coverage: "incomplete",
+            durationMs: Date.now() - startedAt,
+            error: getErrorMessage(error),
+          });
+          throw error;
+        }
+      },
+    });
 
     if (selectedKinds.has("code")) {
-      lanes.push({
-        kind: "code",
-        execute: async () => {
+      lanes.push(
+        withLaneDiagnostics("code", async () => {
           const skill = await loadSkill({
             kind: "review",
             overridePath: reviewSkillPath,
@@ -475,14 +562,13 @@ async function run(): Promise<void> {
             promptsDir,
             enableValidator,
           });
-        },
-      });
+        }),
+      );
     }
 
     if (selectedKinds.has("security")) {
-      lanes.push({
-        kind: "security",
-        execute: async () => {
+      lanes.push(
+        withLaneDiagnostics("security", async () => {
           const skill = await loadSkill({
             kind: "security-review",
             overridePath: securitySkillPath,
@@ -503,14 +589,13 @@ async function run(): Promise<void> {
             promptsDir,
             enableValidator,
           });
-        },
-      });
+        }),
+      );
     }
 
     if (selectedKinds.has("policy")) {
-      lanes.push({
-        kind: "policy",
-        execute: async () => {
+      lanes.push(
+        withLaneDiagnostics("policy", async () => {
           const skill = await loadRequiredRepositorySkill({
             skillPath: policySkillPath,
             workspacePath,
@@ -531,8 +616,8 @@ async function run(): Promise<void> {
             promptsDir,
             enableValidator,
           });
-        },
-      });
+        }),
+      );
     }
 
     console.log(
@@ -541,21 +626,42 @@ async function run(): Promise<void> {
     );
     const restOctokit = octokit.rest;
     const settled = await settleReviewLanes(lanes, async (result) => {
-      const post = await postReviewFromValidated({
-        validated: result.validated,
-        octokit: restOctokit,
-        owner,
-        repo,
-        prNumber: context.entityNumber,
-        marker: markerForKind(result.kind),
-        inlineCap: 20,
-        checkpoint: checkpoints.get(result.kind),
-      });
-      console.log(
-        `enkii: posted ${result.kind} review #${post.reviewId} immediately after lane completion`,
-      );
-      core.setOutput(`${result.kind}_review_id`, String(post.reviewId));
-      return post;
+      const startedAt = Date.now();
+      try {
+        const post = await postReviewFromValidated({
+          validated: result.validated,
+          octokit: restOctokit,
+          owner,
+          repo,
+          prNumber: context.entityNumber,
+          marker: markerForKind(result.kind),
+          inlineCap: 20,
+          checkpoint: checkpoints.get(result.kind),
+        });
+        console.log(
+          `enkii: posted ${result.kind} review #${post.reviewId} immediately after lane completion`,
+        );
+        core.setOutput(`${result.kind}_review_id`, String(post.reviewId));
+        recordDiagnostic({
+          kind: result.kind,
+          phase: "post",
+          status: "completed",
+          durationMs: Date.now() - startedAt,
+          coverage: result.validated.coverageComplete
+            ? "complete"
+            : "incomplete",
+        });
+        return post;
+      } catch (error) {
+        recordDiagnostic({
+          kind: result.kind,
+          phase: "post",
+          status: "failed",
+          durationMs: Date.now() - startedAt,
+          error: getErrorMessage(error),
+        });
+        throw error;
+      }
     });
 
     for (const entry of settled.posted) {
@@ -565,7 +671,6 @@ async function run(): Promise<void> {
           `${post.inlinePosted} inline, ${post.summarized} summarized, ` +
           `${post.totalApproved} approved total.`,
       );
-      core.setOutput(`${kind}_review_id`, String(post.reviewId));
     }
 
     if (settled.errors.length > 0) {
@@ -581,6 +686,11 @@ async function run(): Promise<void> {
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    recordDiagnostic({
+      phase: "action",
+      status: "failed",
+      error: errorMessage,
+    });
     if (octokit && parsedContext) {
       await markTrackingCommentFailed({
         octokit,
@@ -590,7 +700,8 @@ async function run(): Promise<void> {
       });
     }
     core.setFailed(`enkii failed: ${errorMessage}`);
-    process.exit(1);
+  } finally {
+    await flushDiagnostics();
   }
 }
 

@@ -12,7 +12,7 @@ export function createSubmitCandidatesTool(
     name: "submit_review",
     label: "Submit Review",
     description:
-      "Call this exactly once with the final candidate review output.",
+      "Submit the final candidate review output. If validation rejects it, correct the reported fields and resubmit once in this session.",
     parameters: SubmitCandidatesParameters,
     executionMode: "sequential",
     execute: async (_toolCallId, params) => {
@@ -33,7 +33,7 @@ export function createSubmitValidatedTool(
     name: "submit_validation",
     label: "Submit Validation",
     description:
-      "Call this exactly once with the final validated review output.",
+      "Submit the final validated review output. If validation rejects it, correct the reported fields and resubmit once in this session.",
     parameters: SubmitValidatedParameters,
     executionMode: "sequential",
     execute: async (_toolCallId, params) => {
