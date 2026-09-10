@@ -2,9 +2,172 @@ import { describe, expect, test } from "bun:test";
 import type { Static } from "@mariozechner/pi-ai";
 import { SubmitCandidatesParameters } from "./tool-schemas";
 import { createSubmitCandidatesTool } from "./tools/submit";
-import { runAgent } from "./run-agent";
+import { runAgent, agentTimeoutMs } from "./run-agent";
 
 describe("runAgent", () => {
+  test("SDK preflight schema failures share the same one-correction cap", async () => {
+    let aborts = 0;
+    let prompts = 0;
+    await expect(
+      runAgent({
+        systemPrompt: "system",
+        userPrompt: "review",
+        model: "deepseek/deepseek-v4-pro",
+        tools: [],
+        outputToolName: "submit_review",
+        getOutput: () => undefined,
+        timeoutMs: 1000,
+        createAgent: () => {
+          let emit: (event: any) => void;
+          return {
+            subscribe(callback) {
+              emit = (event) => {
+                void callback(event, new AbortController().signal);
+              };
+              return () => {};
+            },
+            async prompt() {
+              prompts++;
+              emit({
+                type: "tool_execution_end",
+                toolName: "read",
+                toolCallId: "read",
+                isError: true,
+              });
+              expect(aborts).toBe(0);
+              for (let index = 0; index < 2; index++) {
+                emit({
+                  type: "tool_execution_start",
+                  toolName: "submit_review",
+                  toolCallId: String(index),
+                  args: { version: 1 },
+                });
+                emit({
+                  type: "tool_execution_end",
+                  toolName: "submit_review",
+                  toolCallId: String(index),
+                  isError: true,
+                });
+                expect(aborts).toBe(index);
+              }
+            },
+            abort() {
+              aborts++;
+            },
+          };
+        },
+      }),
+    ).rejects.toThrow("tool-schema validation");
+    expect(prompts).toBe(1);
+    expect(aborts).toBe(1);
+  });
+  test("defaults to 30 minutes and honors bounded timeout configuration", () => {
+    const previousMs = process.env.ENKII_AGENT_TIMEOUT_MS;
+    const previousMinutes = process.env.ENKII_AGENT_TIMEOUT_MINUTES;
+    try {
+      delete process.env.ENKII_AGENT_TIMEOUT_MS;
+      delete process.env.ENKII_AGENT_TIMEOUT_MINUTES;
+      expect(agentTimeoutMs()).toBe(30 * 60_000);
+      process.env.ENKII_AGENT_TIMEOUT_MINUTES = "45";
+      expect(agentTimeoutMs()).toBe(45 * 60_000);
+      process.env.ENKII_AGENT_TIMEOUT_MS = "1234";
+      expect(agentTimeoutMs()).toBe(1234);
+      delete process.env.ENKII_AGENT_TIMEOUT_MS;
+      process.env.ENKII_AGENT_TIMEOUT_MINUTES = "121";
+      expect(agentTimeoutMs).toThrow("at most 120");
+    } finally {
+      if (previousMs === undefined) delete process.env.ENKII_AGENT_TIMEOUT_MS;
+      else process.env.ENKII_AGENT_TIMEOUT_MS = previousMs;
+      if (previousMinutes === undefined)
+        delete process.env.ENKII_AGENT_TIMEOUT_MINUTES;
+      else process.env.ENKII_AGENT_TIMEOUT_MINUTES = previousMinutes;
+    }
+  });
+
+  test("invalid submission repair cannot extend the deadline or create a fresh session", async () => {
+    let prompts = 0;
+    let sessions = 0;
+    let submitted: unknown;
+    let finish: (() => void) | undefined;
+    await expect(
+      runAgent({
+        systemPrompt: "system",
+        userPrompt: "review",
+        model: "deepseek/deepseek-v4-pro",
+        outputToolName: "submit_review",
+        getOutput: () => submitted,
+        timeoutMs: 30,
+        transientRetries: 1,
+        tools: [
+          createSubmitCandidatesTool(() => {
+            throw new Error("prior finding 0 has no disposition");
+          }),
+        ],
+        createAgent: (args) => {
+          sessions++;
+          return {
+            subscribe() {
+              return () => {};
+            },
+            async prompt() {
+              prompts++;
+              const response = await args!.initialState!.tools![0]!.execute(
+                "invalid",
+                {},
+              );
+              expect(response.terminate).toBe(false);
+              await new Promise<void>((resolve) => {
+                finish = resolve;
+              });
+            },
+            abort() {
+              finish?.();
+            },
+          };
+        },
+      }),
+    ).rejects.toThrow("prior finding 0");
+    expect(prompts).toBe(1);
+    expect(sessions).toBe(1);
+    expect(submitted).toBeUndefined();
+  });
+
+  test("only one replacement submission is allowed even within a single model loop", async () => {
+    let executions = 0;
+    let aborts = 0;
+    await expect(
+      runAgent({
+        systemPrompt: "system",
+        userPrompt: "review",
+        model: "deepseek/deepseek-v4-pro",
+        outputToolName: "submit_review",
+        getOutput: () => undefined,
+        timeoutMs: 1000,
+        tools: [
+          createSubmitCandidatesTool(() => {
+            executions++;
+            throw new Error("invalid disposition");
+          }),
+        ],
+        createAgent: (args) => ({
+          subscribe() {
+            return () => {};
+          },
+          async prompt() {
+            const submit = args!.initialState!.tools![0]!;
+            expect((await submit.execute("one", {})).terminate).toBe(false);
+            expect((await submit.execute("two", {})).terminate).toBe(true);
+            expect((await submit.execute("three", {})).terminate).toBe(true);
+          },
+          abort() {
+            aborts++;
+          },
+        }),
+      }),
+    ).rejects.toThrow("invalid disposition");
+    expect(executions).toBe(2);
+    expect(aborts).toBe(1);
+  });
   test.each(["provider event", "exception", "timeout"])(
     "preserves completed structured output after a trailing %s",
     async (failure) => {
