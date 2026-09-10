@@ -102,11 +102,14 @@ describe("incremental review orchestration", () => {
   });
 
   async function reviewWithOutputs(
-    pass1: CandidatesPass,
+    pass1: CandidatesPass | CandidatesPass[],
     pass2?: ValidatedPass,
   ) {
     const cwd = await mkdtemp(join(tmpdir(), "enkii-review-flow-"));
     const prompts: string[] = [];
+    const toolFeedback: string[] = [];
+    let submission = 0;
+    let sessions = 0;
     const context: PreparedContext = {
       repository: "owner/repo",
       triggerPhrase: "@enkii",
@@ -130,21 +133,30 @@ describe("incremental review orchestration", () => {
     const agentRunner = async <T>(options: RunAgentOptions<T>) =>
       runAgent({
         ...options,
-        createAgent: () => ({
-          subscribe() {
-            return () => {};
-          },
-          async prompt(prompt) {
-            prompts.push(String(prompt));
-            const output =
-              options.outputToolName === "submit_review" ? pass1 : pass2;
-            const submit = options.tools.find(
-              (t) => t.name === options.outputToolName,
-            )!;
-            await submit.execute("test-submit", output);
-          },
-          abort() {},
-        }),
+        createAgent: (args) => {
+          sessions++;
+          const runtimeTools = args!.initialState!.tools!;
+          return {
+            subscribe() {
+              return () => {};
+            },
+            async prompt(prompt) {
+              prompts.push(String(prompt));
+              const output =
+                options.outputToolName === "submit_review"
+                  ? Array.isArray(pass1)
+                    ? pass1[Math.min(submission++, pass1.length - 1)]
+                    : pass1
+                  : pass2;
+              const submit = runtimeTools.find(
+                (t) => t.name === options.outputToolName,
+              )!;
+              const response = await submit.execute("test-submit", output);
+              toolFeedback.push(JSON.stringify(response));
+            },
+            abort() {},
+          };
+        },
       });
     try {
       const result = await runReview({
@@ -156,7 +168,7 @@ describe("incremental review orchestration", () => {
         enableValidator: !!pass2,
         agentRunner,
       });
-      return { result, prompts, cwd };
+      return { result, prompts, cwd, toolFeedback, sessions };
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
@@ -170,6 +182,39 @@ describe("incremental review orchestration", () => {
       status: "approved",
       body: "Incremental review: retained finding.",
     },
+  });
+
+  test.each(["missing", "invalid reference"])(
+    "repairs %s disposition in the same session before publishing",
+    async (variant) => {
+      const invalid = {
+        ...candidate,
+        priorFindingDispositions:
+          variant === "missing"
+            ? []
+            : [{ index: 0, commentIndex: 7, reason: "retained" }],
+      };
+      const { result, sessions, toolFeedback } = await reviewWithOutputs([
+        invalid,
+        candidate,
+      ]);
+      expect(sessions).toBe(1);
+      expect(result.candidates.priorFindingDispositions).toEqual(
+        candidate.priorFindingDispositions,
+      );
+      expect(toolFeedback[0]).toContain(
+        variant === "missing"
+          ? "prior finding 0 has no disposition"
+          : "commentIndex 7 references a nonexistent comment",
+      );
+      expect(toolFeedback[1]).toContain("Review submitted");
+    },
+  );
+
+  test("repeated invalid submissions fail with precise evidence", async () => {
+    await expect(
+      reviewWithOutputs({ ...candidate, priorFindingDispositions: [] }),
+    ).rejects.toThrow("prior finding 0 has no disposition");
   });
 
   test("two-pass review retains old findings and gives validator the full PR diff", async () => {

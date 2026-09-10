@@ -154,6 +154,9 @@ uses: Timmyy3000/enkii@v0.2.0-beta.4
 | `enable_validator` | no | `"false"` | Two-pass review validation |
 | `run_security` | no | `"true"` | Auto-run security review on PR events |
 | `incremental_review` | no | `"true"` | Reuse completed lane coverage on eligible source-only PR updates; falls back to full review when reuse cannot be verified |
+| `agent_timeout_minutes` | no | `"30"` | Total per-pass time budget, including retries and output repair (maximum `120`) |
+| `diagnostics` | no | `"true"` | Write a bounded, sanitized job summary and three-day workflow artifact |
+| `diagnostic_payloads` | no | `"false"` | Include redacted structured submission payloads in diagnostics |
 
 ## Action outputs
 
@@ -163,6 +166,7 @@ uses: Timmyy3000/enkii@v0.2.0-beta.4
 | `code_review_id` | GitHub review ID for code review post (if posted) |
 | `security_review_id` | GitHub review ID for security review post (if posted) |
 | `policy_review_id` | GitHub review ID for policy review post (if posted) |
+| `diagnostics_path` | Path uploaded as the diagnostics artifact when enabled |
 
 ## Customizing review behavior
 
@@ -170,13 +174,22 @@ uses: Timmyy3000/enkii@v0.2.0-beta.4
 
 - Each code, security, or policy lane posts as soon as it completes. Slow or failed lanes do not hold back successful results.
 - A missing structured submission gets one repair prompt in the existing agent session, preserving the evidence it already read. Provider failures are not treated as missing submissions.
-- `ENKII_AGENT_TIMEOUT_MS` is a **total budget per pass**, including transient retries and output repair (default: 20 minutes). A timeout reports failure rather than restarting for another 20 minutes. Optional validation is a separate pass with its own budget.
+- Invalid structured submissions are checked before acceptance. Missing prior-finding dispositions, invalid references, and mismatched metadata or validator anchors receive a precise correction request and one replacement submission in the same session. Failed repair leaves the lane incomplete.
+- `agent_timeout_minutes` is a **total budget per pass**, including transient retries and output repair (default: 30 minutes, maximum: 120). A timeout reports failure rather than restarting for another full budget. Optional validation is a separate pass with its own budget. `ENKII_AGENT_TIMEOUT_MS` remains a capped advanced override.
 - Bounded context includes a diff/hunk index, description, compact comments and source excerpts around changed hunks. Omitted context is explicitly labeled and the original files remain available to the reviewer.
 - Automatic `synchronize` events can review the delta since that lane's last successfully posted, complete review. Every prior finding must be rechecked, including findings preserved only in the summary. The reviewer must inspect affected callers, dependencies and contracts even when those files are unchanged.
 
 Incremental reuse requires matching repository, PR, posting bot identity, base commit, configured model ID, prompt/runtime and compatible Git history. Enkii conservatively runs a full review for guide/configuration/non-source changes, changed bases or merge bases, divergent or missing history, shallow checkouts, fork PRs, unavailable/oversized checkpoints or unknown posting identity (including sticky tracking comments). Explicit `/review`, `/security`, and `/benchmark` commands always run a full review. Existing reviews without a checkpoint require one full review before reuse becomes possible. After changing a provider preset behind the same ID, explicitly rerun each affected lane in full before relying on incremental coverage.
 
 Checkpoints live in hidden metadata on posted reviews; no database or service is required. Incomplete coverage never creates a checkpoint or receives a clean mergeability verdict. Set `incremental_review: "false"` to require full reviews on every update. Model/provider latency still affects review time; logs include per-pass duration, tool calls, tokens and immediate publication events.
+
+### Diagnostics artifacts
+
+When `diagnostics` is enabled, Enkii adds a GitHub job summary and uploads `diagnostics.json` for three days. It records lane/pass outcomes, coverage, selected model, bounded timings, token usage, retry/repair counts, and submission validation state. Default submission diagnostics retain counts and prior-finding indices rather than finding bodies, source paths, or explanations. Prompts and read-tool arguments/results are not captured. Operational errors can include repository paths. Set `diagnostic_payloads: "true"` to capture structured submissions with known token and secret values redacted and a 16 KiB size limit; finding text may still contain private repository details. Artifacts use the repository's existing Actions access controls.
+
+Diagnostic writing and upload failures do not change the review outcome. A hard runner termination or job timeout can prevent the final summary/artifact from being written. Set the caller's job timeout above the configured pass budget (twice that budget when validation is enabled), allowing time for preparation and posting. Set `diagnostics: "false"` to disable recording and upload.
+
+The model duration measures the interval from a provider turn starting until its assistant message ends. It cannot distinguish provider queueing, network time, and model thinking time.
 
 Enkii’s behavior is prompt/skill-driven.
 
