@@ -4,14 +4,20 @@ All notable changes to enkii will be documented here. Format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Added
+
+- Bounded diagnostics artifacts and GitHub job summaries for review scope, lane outcomes, timings, usage, and structured submission validation failures.
+
 ### Changed
 
+- Increase the default shared per-pass budget from 20 to 30 minutes and expose `agent_timeout_minutes` for longer reviews (up to 120 minutes).
 - Publish each review lane as soon as it finishes, without waiting for slower lanes.
 - Repair missing structured output in the same agent session and share one timeout budget across retries within each pass.
 - Prepare bounded review context upfront and reuse completed lane coverage for eligible incremental updates, with prior-finding rechecks and conservative full-review fallbacks.
 
 ### Fixed
 
+- Validate submissions before ending the review session, allowing one correction of missing prior-finding dispositions, invalid references, or metadata/anchor errors within the same pass budget.
 - Continue a full review without checkpoint reuse or publication when the base branch advances during artifact preparation; still reject changed PR heads.
 
 - Preserve completed structured review output if a trailing provider request fails or the pass times out after submission.

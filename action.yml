@@ -48,6 +48,18 @@ inputs:
     description: "Reuse complete per-lane reviews on synchronize events; unsafe or unavailable checkpoints fall back to full review."
     required: false
     default: "true"
+  agent_timeout_minutes:
+    description: "Total time budget per review pass, including retries and output repair. Default: 30 minutes; maximum: 120."
+    required: false
+    default: "30"
+  diagnostics:
+    description: "Write a bounded, sanitized diagnostics artifact and job summary. Default: true."
+    required: false
+    default: "true"
+  diagnostic_payloads:
+    description: "Include redacted structured submission payloads in diagnostics. Default: false."
+    required: false
+    default: "false"
 
 outputs:
   contains_trigger:
@@ -62,6 +74,12 @@ outputs:
   policy_review_id:
     description: "ID of the policy review submitted to GitHub, when one was posted"
     value: ${{ steps.enkii.outputs.policy_review_id }}
+  diagnostics_path:
+    description: "Directory containing the diagnostics artifact, when diagnostics are enabled"
+    value: ${{ steps.enkii.outputs.diagnostics_path }}
+  diagnostics_name:
+    description: "Unique diagnostics artifact name for this action invocation"
+    value: ${{ steps.enkii.outputs.diagnostics_name }}
 
 runs:
   using: "composite"
@@ -82,6 +100,13 @@ runs:
         cd "${GITHUB_ACTION_PATH}"
         bun install --frozen-lockfile
 
+    - name: Prepare enkii diagnostics
+      if: ${{ inputs.diagnostics != 'false' }}
+      shell: bash
+      run: |
+        diagnostics_dir=$(mktemp -d "${RUNNER_TEMP}/enkii-diagnostics-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-XXXXXX")
+        echo "ENKII_DIAGNOSTICS_DIR=$diagnostics_dir" >> "$GITHUB_ENV"
+
     - name: Run enkii
       id: enkii
       shell: bash
@@ -100,3 +125,16 @@ runs:
         ENABLE_VALIDATOR: ${{ inputs.enable_validator }}
         RUN_SECURITY: ${{ inputs.run_security }}
         INCREMENTAL_REVIEW: ${{ inputs.incremental_review }}
+        ENKII_AGENT_TIMEOUT_MINUTES: ${{ inputs.agent_timeout_minutes }}
+        ENKII_DIAGNOSTICS: ${{ inputs.diagnostics }}
+        ENKII_DIAGNOSTIC_PAYLOADS: ${{ inputs.diagnostic_payloads }}
+
+    - name: Upload enkii diagnostics
+      if: ${{ always() && inputs.diagnostics != 'false' && steps.enkii.outputs.diagnostics_path != '' }}
+      continue-on-error: true
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: ${{ steps.enkii.outputs.diagnostics_name }}
+        path: ${{ steps.enkii.outputs.diagnostics_path }}
+        retention-days: 3
+        if-no-files-found: warn

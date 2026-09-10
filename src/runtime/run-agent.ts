@@ -4,6 +4,7 @@ import {
   type AgentTool,
 } from "@mariozechner/pi-agent-core";
 import { getModel, type Model, type Usage } from "@mariozechner/pi-ai";
+import { recordDiagnostic } from "./diagnostics";
 
 type AgentLike = {
   subscribe: Agent["subscribe"];
@@ -105,6 +106,17 @@ function parseEnvTimeout(): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+export function agentTimeoutMs(): number {
+  const override = parseEnvTimeout();
+  if (override !== null) return Math.min(override, 120 * 60 * 1000);
+  const minutes = Number(process.env.ENKII_AGENT_TIMEOUT_MINUTES || 30);
+  if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 120)
+    throw new Error(
+      "enkii: agent_timeout_minutes must be greater than 0 and at most 120.",
+    );
+  return minutes * 60 * 1000;
+}
+
 function parseEnvTransientRetries(): number {
   const raw = process.env.ENKII_AGENT_TRANSIENT_RETRIES;
   if (!raw) return 1;
@@ -146,8 +158,7 @@ export async function runAgent<T>(
   let totalDurationMs = 0;
   let totalToolCallCount = 0;
   const totalUsage = emptyUsage();
-  const deadline =
-    Date.now() + (options.timeoutMs ?? parseEnvTimeout() ?? 20 * 60 * 1000);
+  const deadline = Date.now() + (options.timeoutMs ?? agentTimeoutMs());
 
   let attempt = 1;
 
@@ -184,6 +195,12 @@ export async function runAgent<T>(
           `enkii${prefix}: transient provider failure, retrying agent run (${attempt})`,
         );
         attempt++;
+        recordDiagnostic({
+          kind: options.logPrefix,
+          phase: "retry",
+          attempt,
+          reason: "transient_provider_failure",
+        });
         continue;
       }
 
@@ -201,9 +218,18 @@ async function runAgentAttempt<T>(
   options: RunAgentOptions<T>,
 ): Promise<RunAgentResult<T>> {
   const start = Date.now();
-  const timeoutMs = options.timeoutMs ?? parseEnvTimeout() ?? 20 * 60 * 1000;
+  const timeoutMs = options.timeoutMs ?? agentTimeoutMs();
   let toolCallCount = 0;
   let errorMessage: string | undefined;
+  let submissionError: string | undefined;
+  let invalidSubmissions = 0;
+  let submissionAttempts = 0;
+  let repairCount = 0;
+  let toolDurationMs = 0;
+  let modelDurationMs = 0;
+  let modelStart: number | undefined;
+  const toolStarts = new Map<string, number>();
+  const pendingSubmissions = new Map<string, unknown>();
   const usage = emptyUsage();
   const prefix = options.logPrefix ? `:${options.logPrefix}` : "";
 
@@ -215,7 +241,64 @@ async function runAgentAttempt<T>(
       systemPrompt: options.systemPrompt,
       model: getOpenRouterModel(options.model),
       thinkingLevel: "off",
-      tools: options.tools,
+      tools: options.tools.map((tool) =>
+        tool.name !== options.outputToolName
+          ? tool
+          : {
+              ...tool,
+              execute: async (...args: Parameters<typeof tool.execute>) => {
+                // Semantic validation happens in the submit callback before storing output.
+                // Keep the correction in this session and permit only one replacement.
+                if (invalidSubmissions >= 2)
+                  return {
+                    content: [
+                      {
+                        type: "text" as const,
+                        text: "Submission repair budget exhausted; review incomplete.",
+                      },
+                    ],
+                    details: {},
+                    terminate: true,
+                  };
+                try {
+                  submissionAttempts++;
+                  const result = await tool.execute(...args);
+                  submissionError = undefined;
+                  recordDiagnostic({
+                    kind: options.logPrefix,
+                    phase: "submission",
+                    status: "accepted",
+                    repairCount: Math.max(0, submissionAttempts - 1),
+                    payload: args[1],
+                  });
+                  return result;
+                } catch (error) {
+                  invalidSubmissions++;
+                  submissionError =
+                    error instanceof Error ? error.message : String(error);
+                  recordDiagnostic({
+                    kind: options.logPrefix,
+                    phase: "submission",
+                    status: "rejected",
+                    error: submissionError,
+                    repairCount: Math.max(0, submissionAttempts - 1),
+                    payload: args[1],
+                  });
+                  if (invalidSubmissions >= 2) agent.abort();
+                  return {
+                    content: [
+                      {
+                        type: "text" as const,
+                        text: `Submission rejected: ${submissionError}\n${invalidSubmissions < 2 ? "Correct these fields and resubmit once using evidence already gathered. Do not restart review." : "Repair budget exhausted; review incomplete."}`,
+                      },
+                    ],
+                    details: { validationFailed: true },
+                    terminate: invalidSubmissions >= 2,
+                  };
+                }
+              },
+            },
+      ),
       messages: [],
     },
     toolExecution: "sequential",
@@ -225,14 +308,45 @@ async function runAgentAttempt<T>(
   agent.subscribe((event: AgentEvent) => {
     if (event.type === "tool_execution_start") {
       toolCallCount++;
+      toolStarts.set(event.toolCallId, Date.now());
+      if (event.toolName === options.outputToolName)
+        pendingSubmissions.set(event.toolCallId, event.args);
       console.log(`enkii${prefix}: tool start ${event.toolName}`);
     }
     if (event.type === "tool_execution_end") {
+      const began = toolStarts.get(event.toolCallId);
+      if (began !== undefined) toolDurationMs += Date.now() - began;
+      toolStarts.delete(event.toolCallId);
+      // The SDK rejects malformed arguments before our execute wrapper runs.
+      // Account for those rejections in the same correction budget.
+      if (
+        event.toolName === options.outputToolName &&
+        event.isError &&
+        !options.getOutput()
+      ) {
+        invalidSubmissions++;
+        submissionAttempts++;
+        submissionError = `${options.outputToolName} arguments failed tool-schema validation; correct the tool's reported field errors.`;
+        recordDiagnostic({
+          kind: options.logPrefix,
+          phase: "submission",
+          status: "rejected",
+          error: submissionError,
+          errorCode: "tool_schema_validation",
+          repairCount: Math.max(0, submissionAttempts - 1),
+          payload: pendingSubmissions.get(event.toolCallId),
+        });
+        if (invalidSubmissions >= 2) agent.abort();
+      }
+      pendingSubmissions.delete(event.toolCallId);
       console.log(
         `enkii${prefix}: tool end ${event.toolName}${event.isError ? " (error)" : ""}`,
       );
     }
+    if (event.type === "turn_start") modelStart = Date.now();
     if (event.type === "message_end" && event.message.role === "assistant") {
+      if (modelStart !== undefined) modelDurationMs += Date.now() - modelStart;
+      modelStart = undefined;
       const messageError =
         "errorMessage" in event.message
           ? event.message.errorMessage
@@ -253,14 +367,21 @@ async function runAgentAttempt<T>(
       options.missingOutputRetries ?? parseEnvMissingOutputRetries();
     for (
       let repair = 1;
-      !options.getOutput() && !errorMessage && repair <= repairs;
+      !options.getOutput() &&
+      !errorMessage &&
+      invalidSubmissions < 2 &&
+      repair <= repairs &&
+      Date.now() - start < timeoutMs;
       repair++
     ) {
       console.warn(
         `enkii${prefix}: repairing missing ${options.outputToolName} in the existing session (${repair})`,
       );
+      repairCount++;
       await agent.prompt(
-        buildMissingOutputRetryPrompt(options.outputToolName, repair),
+        submissionError
+          ? `Correct the rejected ${options.outputToolName} submission in this session: ${submissionError}. Reuse gathered evidence and resubmit once.`
+          : buildMissingOutputRetryPrompt(options.outputToolName, repair),
       );
     }
   } catch (error) {
@@ -271,13 +392,31 @@ async function runAgentAttempt<T>(
 
   const durationMs = Date.now() - start;
   const output = options.getOutput();
+  if (modelStart !== undefined) modelDurationMs += Date.now() - modelStart;
+  for (const began of toolStarts.values()) toolDurationMs += Date.now() - began;
+  recordDiagnostic({
+    kind: options.logPrefix,
+    phase: "pass",
+    status: output ? "completed" : "incomplete",
+    durationMs,
+    toolDurationMs,
+    modelDurationMs,
+    toolCallCount,
+    repairCount: Math.max(repairCount, submissionAttempts - 1),
+    usage,
+    timeoutMs,
+    error: submissionError ?? errorMessage,
+    model: options.model,
+  });
   // Submission is the terminal result. A trailing provider turn or timeout
   // must not discard it; the caller still validates its schema and coverage.
   if (!output) {
     throw new AgentRunError(
-      errorMessage
-        ? `enkii: provider failure: ${errorMessage}`
-        : `enkii: agent did not call ${options.outputToolName}.`,
+      submissionError
+        ? `enkii: invalid submission after bounded repair: ${submissionError}`
+        : errorMessage
+          ? `enkii: provider failure: ${errorMessage}`
+          : `enkii: agent did not call ${options.outputToolName}.`,
       durationMs,
       toolCallCount,
       usage,
