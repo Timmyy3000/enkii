@@ -6,6 +6,7 @@ All notable changes to enkii will be documented here. Format follows [Keep a Cha
 
 ### Added
 
+- Explain per-lane incremental reuse or full-review fallback in logs, diagnostic artifacts, and job summaries, including the relevant checkpoint commit and triggering event.
 - Bounded diagnostics artifacts and GitHub job summaries for review scope, lane outcomes, timings, usage, and structured submission validation failures.
 
 ### Changed

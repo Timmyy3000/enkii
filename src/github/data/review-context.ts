@@ -54,6 +54,22 @@ export function findCheckpoint(
   expected: Omit<ReviewCheckpoint, "version" | "head" | "findings">,
   postingActorId?: number,
 ): ReviewCheckpoint | undefined {
+  return inspectCheckpoint(reviews, expected, postingActorId).checkpoint;
+}
+
+export type CheckpointDecision = {
+  checkpoint?: ReviewCheckpoint;
+  reason: string;
+  checkpointHead?: string;
+};
+
+/** Report the newest relevant rejection, but still search older compatible reviews. */
+export function inspectCheckpoint(
+  reviews: PostedReview[],
+  expected: Omit<ReviewCheckpoint, "version" | "head" | "findings">,
+  postingActorId?: number,
+): CheckpointDecision {
+  let rejected: CheckpointDecision | undefined;
   for (const review of [...reviews].reverse()) {
     // A marker in a human comment, an unsubmitted review or another bot is not a checkpoint.
     if (
@@ -73,20 +89,73 @@ export function findCheckpoint(
       if (!parsed.success) continue;
       const checkpoint = parsed.data;
       if (
-        checkpoint.head !== review.commit_id ||
         checkpoint.repository !== expected.repository ||
         checkpoint.prNumber !== expected.prNumber ||
-        checkpoint.kind !== expected.kind ||
-        checkpoint.base !== expected.base ||
-        checkpoint.config !== expected.config
+        checkpoint.kind !== expected.kind
       )
         continue;
-      return checkpoint;
+      const reason =
+        checkpoint.head !== review.commit_id
+          ? "checkpoint_commit_mismatch"
+          : checkpoint.base !== expected.base
+            ? "checkpoint_base_changed"
+            : checkpoint.config !== expected.config
+              ? "checkpoint_configuration_changed"
+              : undefined;
+      if (reason) {
+        rejected ??= {
+          reason,
+          checkpointHead:
+            reason === "checkpoint_commit_mismatch"
+              ? SHA.safeParse(review.commit_id).success
+                ? review.commit_id!
+                : undefined
+              : checkpoint.head,
+        };
+        continue;
+      }
+      return {
+        checkpoint,
+        reason: "checkpoint_matched",
+        checkpointHead: checkpoint.head,
+      };
     } catch {
       /* Ignore malformed external metadata. */
     }
   }
+  return rejected ?? { reason: "no_compatible_checkpoint" };
+}
+
+export function reuseEligibilityReason(args: {
+  enabled: boolean;
+  snapshotSafe: boolean;
+  benchmark: boolean;
+  fork: boolean;
+  command: string;
+  eventAction?: string;
+  runtime: string;
+  actorId?: number;
+  lookupFailed: boolean;
+}): string | undefined {
+  if (!args.enabled) return "incremental_disabled";
+  if (!args.snapshotSafe) return "base_moved_during_preparation";
+  if (args.benchmark) return "benchmark_full_review";
+  if (args.fork) return "fork_full_review";
+  if (args.command !== "auto") return "explicit_full_review";
+  if (args.eventAction !== "synchronize") return "event_not_synchronize";
+  if (!args.runtime) return "runtime_unavailable";
+  if (!args.actorId) return "posting_identity_unavailable";
+  if (args.lookupFailed) return "checkpoint_lookup_failed";
   return undefined;
+}
+
+class IncrementalScopeError extends Error {
+  constructor(
+    public reason: string,
+    message: string,
+  ) {
+    super(message);
+  }
 }
 
 export function reviewConfigHash(
@@ -151,19 +220,40 @@ export function incrementalDiff(
     !SHA.safeParse(checkpoint.head).success ||
     !SHA.safeParse(head).success ||
     !SHA.safeParse(base).success ||
-    checkpoint.base !== base ||
-    git(cwd, ["rev-parse", "HEAD"]).trim() !== head ||
-    git(cwd, ["rev-parse", "--is-shallow-repository"]).trim() !== "false"
+    checkpoint.base !== base
   ) {
-    throw new Error("unverified checkout or base");
+    throw new IncrementalScopeError(
+      "unverified_commit_or_base",
+      "unverified checkout or base",
+    );
   }
-  git(cwd, ["merge-base", "--is-ancestor", checkpoint.head, head]);
+  if (git(cwd, ["rev-parse", "HEAD"]).trim() !== head)
+    throw new IncrementalScopeError(
+      "checkout_head_mismatch",
+      "unverified checkout or base: checkout head mismatch",
+    );
+  if (git(cwd, ["rev-parse", "--is-shallow-repository"]).trim() !== "false")
+    throw new IncrementalScopeError(
+      "shallow_history",
+      "unverified checkout or base: shallow history",
+    );
+  try {
+    git(cwd, ["merge-base", "--is-ancestor", checkpoint.head, head]);
+  } catch {
+    throw new IncrementalScopeError(
+      "checkpoint_history_unavailable_or_diverged",
+      "checkpoint history unavailable or diverged",
+    );
+  }
   // A base merge/rebase can change the PR diff even when the target SHA is unchanged.
   if (
     git(cwd, ["merge-base", checkpoint.head, base]).trim() !==
     git(cwd, ["merge-base", head, base]).trim()
   ) {
-    throw new Error("PR merge base changed");
+    throw new IncrementalScopeError(
+      "merge_base_changed",
+      "PR merge base changed",
+    );
   }
   // Referenced policy guides and build/dependency configuration can change the
   // meaning of already-reviewed code. Only source-only updates reuse coverage.
@@ -195,7 +285,8 @@ export function incrementalDiff(
         ),
     )
   ) {
-    throw new Error(
+    throw new IncrementalScopeError(
+      "non_source_or_guidance_changed",
       "review guidance, configuration or non-source files changed",
     );
   }
@@ -322,11 +413,15 @@ export async function prepareIncrementalScope(args: {
   artifacts: ReviewArtifacts;
   kind: string;
   promptsDir: string;
+  fallbackReason?: string;
+  checkpointHead?: string;
 }): Promise<{
   scope: string;
   priorFindingCount: number;
   incremental: boolean;
   diffPath?: string;
+  reason: string;
+  checkpointHead?: string;
 }> {
   const { checkpoint } = args;
   const full = {
@@ -334,6 +429,8 @@ export async function prepareIncrementalScope(args: {
       "Review scope: full PR. Review the full diff and affected dependencies.",
     priorFindingCount: 0,
     incremental: false,
+    reason: args.fallbackReason ?? "no_compatible_checkpoint",
+    checkpointHead: checkpoint?.head ?? args.checkpointHead,
   };
   if (!checkpoint) return full;
   try {
@@ -343,6 +440,8 @@ export async function prepareIncrementalScope(args: {
     const findings: Candidate[] = checkpoint.findings;
     return {
       incremental: true,
+      reason: "checkpoint_reused",
+      checkpointHead: checkpoint.head,
       diffPath: deltaPath,
       priorFindingCount: findings.length,
       scope: [
@@ -380,6 +479,12 @@ export async function prepareIncrementalScope(args: {
           ? error.message.split("\n")[0]
           : "checkpoint unavailable"),
     );
-    return full;
+    return {
+      ...full,
+      reason:
+        error instanceof IncrementalScopeError
+          ? error.reason
+          : "git_or_artifact_preparation_failed",
+    };
   }
 }

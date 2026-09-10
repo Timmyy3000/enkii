@@ -59,7 +59,8 @@ import {
 } from "./review-lanes";
 import { reportUsage } from "../usage/drain";
 import {
-  findCheckpoint,
+  inspectCheckpoint,
+  reuseEligibilityReason,
   checkpointSnapshotMatches,
   prepareReviewContext,
   prepareIncrementalScope,
@@ -384,6 +385,7 @@ async function run(): Promise<void> {
       "action" in context.payload &&
       context.payload.action === "synchronize";
     let previousReviews: PostedReview[] = [];
+    let checkpointLookupFailed = false;
     let runtime = "";
     try {
       runtime = await runtimeFingerprint(actionPath);
@@ -403,6 +405,7 @@ async function run(): Promise<void> {
             },
           );
       } catch {
+        checkpointLookupFailed = true;
         console.warn(
           "enkii: review checkpoints unavailable; using full review.",
         );
@@ -434,11 +437,31 @@ async function run(): Promise<void> {
         base: prBranch.baseRefOid ?? "",
         config: reviewConfigHash(skillContent, model, enableValidator, runtime),
       };
-      const scope = await prepareIncrementalScope({
-        checkpoint:
-          canReuse && runtime && dispatch.postingActorId
-            ? findCheckpoint(previousReviews, expected, dispatch.postingActorId)
+      const eligibilityReason = reuseEligibilityReason({
+        enabled: envFlag("INCREMENTAL_REVIEW", true),
+        snapshotSafe: checkpointSnapshotSafe,
+        benchmark: benchmarkMode,
+        fork: isForkPR,
+        command: dispatch.command,
+        eventAction:
+          "action" in context.payload
+            ? String(context.payload.action)
             : undefined,
+        runtime,
+        actorId: dispatch.postingActorId,
+        lookupFailed: checkpointLookupFailed,
+      });
+      const checkpointDecision = eligibilityReason
+        ? {
+            reason: eligibilityReason,
+            checkpoint: undefined,
+            checkpointHead: undefined,
+          }
+        : inspectCheckpoint(previousReviews, expected, dispatch.postingActorId);
+      const scope = await prepareIncrementalScope({
+        checkpoint: checkpointDecision.checkpoint,
+        fallbackReason: checkpointDecision.reason,
+        checkpointHead: checkpointDecision.checkpointHead,
         cwd: workspacePath,
         head: prBranch.headRefOid,
         base: expected.base,
@@ -471,7 +494,7 @@ async function run(): Promise<void> {
         });
       }
       console.log(
-        `enkii:${kind}: ${scope.incremental ? "incremental" : "full"} review scope; ${scope.priorFindingCount} prior findings to recheck`,
+        `enkii:${kind}: ${scope.incremental ? "incremental" : "full"} review scope; ${scope.priorFindingCount} prior findings to recheck; reason=${scope.reason}; checkpoint=${scope.checkpointHead ?? "none"}`,
       );
       recordDiagnostic({
         kind,
@@ -481,6 +504,13 @@ async function run(): Promise<void> {
         model,
         durationMs: Date.now() - contextStartedAt,
         priorFindingCount: scope.priorFindingCount,
+        reason: scope.reason,
+        checkpointHead: scope.checkpointHead,
+        eventName: context.eventName,
+        eventAction:
+          "action" in context.payload
+            ? String(context.payload.action)
+            : undefined,
       });
       return {
         repository: `${owner}/${repo}`,

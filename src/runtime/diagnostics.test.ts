@@ -29,7 +29,11 @@ test("writes a bounded, redacted artifact and summary", async () => {
   recordDiagnostic({
     kind: "code",
     pass: "candidate",
-    phase: "execute",
+    phase: "preparation",
+    reason: "checkpoint_reused",
+    checkpointHead: "a".repeat(40),
+    eventName: "pull_request",
+    eventAction: "synchronize",
     scope: "incremental",
     model: "model-id",
     status: "failed",
@@ -51,10 +55,13 @@ test("writes a bounded, redacted artifact and summary", async () => {
   expect(artifact).not.toContain("must not appear");
   const renderedSummary = await readFile(summary, "utf8");
   expect(renderedSummary).toContain(
-    "| code | candidate | execute | incremental |",
+    "| code | candidate | preparation | incremental |",
   );
   expect(renderedSummary).toContain("failed");
   expect(renderedSummary).toContain("123");
+  expect(renderedSummary).toContain("checkpoint\\_reused");
+  expect(renderedSummary).toContain("a".repeat(40));
+  expect(renderedSummary).toContain("pull\\_request / synchronize");
   expect(renderedSummary).toContain("request \\[REDACTED\\] failed");
 });
 
