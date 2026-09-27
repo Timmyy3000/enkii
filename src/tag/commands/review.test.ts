@@ -137,6 +137,8 @@ describe("incremental review orchestration", () => {
     "memory address still vulnerable",
     "suffix handling not fixed yet",
     "the finding is not resolved",
+    "not removed yet",
+    "never reverted",
   ])("never coerces persistence or negation language: %s", (reason) => {
     const submission = {
       ...candidate,
