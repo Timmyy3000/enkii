@@ -37,18 +37,24 @@ export class AgentRunError extends Error {
   durationMs: number;
   toolCallCount: number;
   usage: Usage;
+  /** True when the attempt consumed its whole time budget. Timeouts must
+   * never retry: the remaining budget rounds to ~1ms, so a fresh session
+   * would instantly time out again. */
+  timedOut: boolean;
 
   constructor(
     message: string,
     durationMs: number,
     toolCallCount: number,
     usage: Usage,
+    timedOut = false,
   ) {
     super(message);
     this.name = "AgentRunError";
     this.durationMs = durationMs;
     this.toolCallCount = toolCallCount;
     this.usage = usage;
+    this.timedOut = timedOut;
   }
 }
 
@@ -182,7 +188,8 @@ export async function runAgent<T>(
       totalDurationMs += error.durationMs;
       totalToolCallCount += error.toolCallCount;
       addUsage(totalUsage, error.usage);
-      const transient = isTransientProviderError(error.message);
+      const transient =
+        isTransientProviderError(error.message) && !error.timedOut;
       if (
         transient &&
         transientRetriesRemaining > 0 &&
@@ -209,6 +216,7 @@ export async function runAgent<T>(
         totalDurationMs,
         totalToolCallCount,
         totalUsage,
+        error.timedOut,
       );
     }
   }
@@ -221,6 +229,7 @@ async function runAgentAttempt<T>(
   const timeoutMs = options.timeoutMs ?? agentTimeoutMs();
   let toolCallCount = 0;
   let errorMessage: string | undefined;
+  let timedOut = false;
   let submissionError: string | undefined;
   let invalidSubmissions = 0;
   let submissionAttempts = 0;
@@ -357,6 +366,7 @@ async function runAgentAttempt<T>(
   });
 
   const timer = setTimeout(() => {
+    timedOut = true;
     errorMessage = `timed out after ${(timeoutMs / 1000).toFixed(1)}s`;
     agent.abort();
   }, timeoutMs);
@@ -420,6 +430,7 @@ async function runAgentAttempt<T>(
       durationMs,
       toolCallCount,
       usage,
+      timedOut,
     );
   }
 

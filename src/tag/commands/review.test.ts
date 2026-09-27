@@ -4,6 +4,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import {
   assertPriorFindingsRechecked,
+  normalizePriorFindings,
   runReview,
   reviewArtifactPrefix,
   reviewRetryCommand,
@@ -99,6 +100,24 @@ describe("incremental review orchestration", () => {
         1,
       ),
     ).not.toThrow();
+  });
+
+  test("normalizes dispositions instead of failing after repair", () => {
+    const submission = {
+      ...candidate,
+      comments: [],
+      priorFindingDispositions: [
+        { index: 0, commentIndex: 0, reason: "Still reachable at HEAD" },
+        { index: 0, commentIndex: null, reason: "duplicate" },
+        { index: 9, commentIndex: null, reason: "out of range" },
+      ],
+    } as CandidatesPass;
+    normalizePriorFindings(submission, 2);
+    expect(submission.priorFindingDispositions).toEqual([
+      { index: 0, commentIndex: null, reason: "Still reachable at HEAD" },
+      { index: 1, commentIndex: null, reason: "not rechecked by the reviewer" },
+    ]);
+    expect(() => assertPriorFindingsRechecked(submission, 2)).not.toThrow();
   });
 
   async function reviewWithOutputs(
@@ -211,10 +230,15 @@ describe("incremental review orchestration", () => {
     },
   );
 
-  test("repeated invalid submissions fail with precise evidence", async () => {
-    await expect(
-      reviewWithOutputs({ ...candidate, priorFindingDispositions: [] }),
-    ).rejects.toThrow("prior finding 0 has no disposition");
+  test("repeated invalid dispositions are normalized, not fatal", async () => {
+    const result = await reviewWithOutputs({
+      ...candidate,
+      priorFindingDispositions: [],
+    });
+    expect(result.result.candidates.priorFindingDispositions).toEqual([
+      { index: 0, commentIndex: null, reason: "not rechecked by the reviewer" },
+    ]);
+    expect(result.result.candidates.coverageComplete).toBe(false);
   });
 
   test("two-pass review retains old findings and gives validator the full PR diff", async () => {

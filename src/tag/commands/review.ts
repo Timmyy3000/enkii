@@ -101,6 +101,7 @@ export async function runReview(
     "If coverage is incomplete, set coverageComplete=false, explain the gap and do not claim the PR is safe.";
 
   let candidatesOutput: CandidatesPass | undefined;
+  let dispositionRepairs = 0;
   const pass1 = await agentRunner({
     systemPrompt: `You are enkii's ${kind} review runtime. Use tools to inspect files and submit structured output.`,
     userPrompt: pass1Prompt,
@@ -114,10 +115,20 @@ export async function runReview(
           CandidatesPassSchema,
           kind,
         );
-        assertPriorFindingsRechecked(
-          parsed,
-          preparedContext.priorFindingCount ?? 0,
-        );
+        const priorCount = preparedContext.priorFindingCount ?? 0;
+        try {
+          assertPriorFindingsRechecked(parsed, priorCount);
+        } catch (error) {
+          if (dispositionRepairs++ < 1) throw error;
+          console.warn(
+            `enkii: ${kind} normalized prior-finding dispositions: ${(error as Error).message}`,
+          );
+          normalizePriorFindings(parsed, priorCount);
+          // Unverified rechecks must not read as a clean, checkpointed review:
+          // incomplete coverage blocks the checkpoint and the "safe" verdict,
+          // so the next run rechecks every prior finding in full.
+          parsed.coverageComplete = false;
+        }
         assertCandidateMetadata(parsed, preparedContext);
         candidatesOutput = parsed;
       }),
@@ -300,7 +311,7 @@ export function assertPriorFindingsRechecked(
     seen.add(d.index);
     if (d.commentIndex !== null && !candidates.comments[d.commentIndex])
       issues.push(
-        `prior finding ${d.index}: commentIndex ${d.commentIndex} references a nonexistent comment`,
+        `prior finding ${d.index}: commentIndex ${d.commentIndex} references a nonexistent comment. If no findings survive, submit comments: [] with every disposition set to commentIndex: null and the fix explained`,
       );
     if (!d.reason.trim())
       issues.push(`prior finding ${d.index} needs a concrete reason`);
@@ -312,6 +323,41 @@ export function assertPriorFindingsRechecked(
     throw new Error(
       `enkii: invalid prior-finding dispositions: ${issues.join("; ")}. Return one entry per prior finding with a concrete reason; use commentIndex=null only when resolved or no longer valid.`,
     );
+}
+
+/**
+ * Dispositions are recheck bookkeeping: nothing posts or resolves threads from
+ * them. After one repair round, repair them instead of failing the whole lane;
+ * the caller marks coverage incomplete so nothing reads as verified-clean.
+ */
+export function normalizePriorFindings(
+  candidates: CandidatesPass,
+  count: number,
+): void {
+  const byIndex = new Map<
+    number,
+    NonNullable<CandidatesPass["priorFindingDispositions"]>[number]
+  >();
+  for (const d of candidates.priorFindingDispositions ?? []) {
+    if (d.index >= count || byIndex.has(d.index)) continue;
+    const dangling =
+      d.commentIndex !== null && !candidates.comments[d.commentIndex];
+    byIndex.set(d.index, {
+      index: d.index,
+      commentIndex: dangling ? null : d.commentIndex,
+      reason: d.reason?.trim() || "not rechecked by the reviewer",
+    });
+  }
+  for (let index = 0; index < count; index++)
+    if (!byIndex.has(index))
+      byIndex.set(index, {
+        index,
+        commentIndex: null,
+        reason: "not rechecked by the reviewer",
+      });
+  candidates.priorFindingDispositions = [...byIndex.values()].sort(
+    (a, b) => a.index - b.index,
+  );
 }
 
 function assertCandidateMetadata(

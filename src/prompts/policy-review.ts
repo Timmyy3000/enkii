@@ -109,6 +109,11 @@ When finished, call \`submit_review\` exactly once using this schema:
 - Use \`severity\` as one of \`P0\`, \`P1\`, \`P2\`, or \`nit\` so Enkii can render its mechanical severity badge.
 - Write \`body\` and \`reviewSummary.body\` in the format required by the repository policy instructions. Do not rewrite the team's citation or finding format to match generic code-review wording. The compactness contract above changes presentation only; it does not waive required fields, citations, or active-finding details.
 - Use \`RIGHT\` for new or modified lines and \`LEFT\` only for removed lines.
+- **priorFindingDispositions**: Only when the host's review scope lists prior findings; otherwise omit it.
+  - One entry per prior index: \`{index, commentIndex, reason}\` with a concrete reason.
+  - \`commentIndex\` is the position of the retained finding in this submission's \`comments\` array.
+  - Use \`commentIndex: null\` ONLY when that prior finding is resolved or no longer valid at current HEAD.
+  - If no finding survives, submit \`comments: []\` with every disposition set to \`null\` — never point \`commentIndex\` at a comment that does not exist.
 </output_spec>
 
 <critical_constraints>
