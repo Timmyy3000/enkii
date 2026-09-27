@@ -293,7 +293,7 @@ const RESOLVED_HINT =
 const PERSISTED_HINT =
   /\b(still|persist\w*|reachab\w*|remain\w*|unresolv\w*|outstanding)\b/i;
 const NEGATED_HINT =
-  /\b(not|never)\b[\s\w]{0,30}\b(resolv\w*|fix(?:ed|es)?|addressed|gone|obsolete|clean)\b/i;
+  /\b(not|never)\b[\s\w]{0,30}\b(resolv\w*|fix(?:ed|es)?|addressed|remov\w*|revert\w*|gone|obsolete|not present|no longer valid|clean)\b/i;
 
 function isResolvedEmptyDisposition(reason: string): boolean {
   return (
