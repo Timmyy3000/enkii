@@ -124,6 +124,10 @@ export async function runReview(
             `enkii: ${kind} normalized prior-finding dispositions: ${(error as Error).message}`,
           );
           normalizePriorFindings(parsed, priorCount);
+          // Unverified rechecks must not read as a clean, checkpointed review:
+          // incomplete coverage blocks the checkpoint and the "safe" verdict,
+          // so the next run rechecks every prior finding in full.
+          parsed.coverageComplete = false;
         }
         assertCandidateMetadata(parsed, preparedContext);
         candidatesOutput = parsed;
@@ -323,8 +327,8 @@ export function assertPriorFindingsRechecked(
 
 /**
  * Dispositions are recheck bookkeeping: nothing posts or resolves threads from
- * them. After one repair round, repair them instead of failing the whole lane,
- * so a bookkeeping slip never turns a finished review into a failed check.
+ * them. After one repair round, repair them instead of failing the whole lane;
+ * the caller marks coverage incomplete so nothing reads as verified-clean.
  */
 export function normalizePriorFindings(
   candidates: CandidatesPass,

@@ -238,6 +238,7 @@ describe("incremental review orchestration", () => {
     expect(result.result.candidates.priorFindingDispositions).toEqual([
       { index: 0, commentIndex: null, reason: "not rechecked by the reviewer" },
     ]);
+    expect(result.result.candidates.coverageComplete).toBe(false);
   });
 
   test("two-pass review retains old findings and gives validator the full PR diff", async () => {
