@@ -101,6 +101,37 @@ describe("incremental review orchestration", () => {
     ).not.toThrow();
   });
 
+  test("coerces a dangling commentIndex to null when nothing survives and the reason says resolved", () => {
+    const resolved = {
+      ...candidate,
+      comments: [],
+      priorFindingDispositions: [
+        {
+          index: 0,
+          commentIndex: 0,
+          reason: "Fixed in dd67930: normalized before save",
+        },
+      ],
+    } as CandidatesPass;
+    expect(() => assertPriorFindingsRechecked(resolved, 1)).not.toThrow();
+    expect(resolved.priorFindingDispositions![0]!.commentIndex).toBeNull();
+  });
+
+  test("still fails when an empty review claims the risk persists", () => {
+    expect(() =>
+      assertPriorFindingsRechecked(
+        {
+          ...candidate,
+          comments: [],
+          priorFindingDispositions: [
+            { index: 0, commentIndex: 0, reason: "Still reachable at HEAD" },
+          ],
+        },
+        1,
+      ),
+    ).toThrow(/nonexistent comment/);
+  });
+
   async function reviewWithOutputs(
     pass1: CandidatesPass | CandidatesPass[],
     pass2?: ValidatedPass,

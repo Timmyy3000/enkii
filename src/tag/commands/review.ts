@@ -283,6 +283,12 @@ function synthesizeValidatedFromCandidates(
   };
 }
 
+// Resolution language that justifies coercing a dangling commentIndex to null
+// when the submission carries no comments. Narrow on purpose: a persisted risk
+// must keep failing so the repair retry re-emits the comment instead.
+const RESOLVED_HINT =
+  /resolv|fix|no longer|address|remov|revert|gone|obsolete|not present|clean/i;
+
 export function assertPriorFindingsRechecked(
   candidates: CandidatesPass,
   count: number,
@@ -298,10 +304,22 @@ export function assertPriorFindingsRechecked(
     if (seen.has(d.index))
       issues.push(`prior finding ${d.index} has duplicate dispositions`);
     seen.add(d.index);
-    if (d.commentIndex !== null && !candidates.comments[d.commentIndex])
-      issues.push(
-        `prior finding ${d.index}: commentIndex ${d.commentIndex} references a nonexistent comment`,
-      );
+    if (d.commentIndex !== null && !candidates.comments[d.commentIndex]) {
+      // ponytail: the model systematically submits commentIndex 0 with an empty
+      // comments array when the fix already landed. Coerce to null only then —
+      // dispositions are never posted, only comments are — and keep failing
+      // when the reason claims the risk persists, so real findings stay visible.
+      if (
+        candidates.comments.length === 0 &&
+        RESOLVED_HINT.test(d.reason ?? "")
+      ) {
+        d.commentIndex = null;
+      } else {
+        issues.push(
+          `prior finding ${d.index}: commentIndex ${d.commentIndex} references a nonexistent comment. If no findings survive, submit comments: [] with every disposition set to commentIndex: null and the fix explained`,
+        );
+      }
+    }
     if (!d.reason.trim())
       issues.push(`prior finding ${d.index} needs a concrete reason`);
   }
