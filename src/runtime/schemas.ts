@@ -32,7 +32,7 @@ export const CandidatesPassSchema = z.object({
       z.object({
         index: z.number().int().nonnegative(),
         commentIndex: z.number().int().nonnegative().nullable(),
-        reason: z.string().min(1),
+        reason: z.string(),
       }),
     )
     .optional(),

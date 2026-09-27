@@ -4,6 +4,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import {
   assertPriorFindingsRechecked,
+  normalizePriorFindings,
   runReview,
   reviewArtifactPrefix,
   reviewRetryCommand,
@@ -101,54 +102,22 @@ describe("incremental review orchestration", () => {
     ).not.toThrow();
   });
 
-  test("coerces a dangling commentIndex to null when nothing survives and the reason says resolved", () => {
-    const resolved = {
-      ...candidate,
-      comments: [],
-      priorFindingDispositions: [
-        {
-          index: 0,
-          commentIndex: 0,
-          reason: "Fixed in dd67930: normalized before save",
-        },
-      ],
-    } as CandidatesPass;
-    expect(() => assertPriorFindingsRechecked(resolved, 1)).not.toThrow();
-    expect(resolved.priorFindingDispositions![0]!.commentIndex).toBeNull();
-  });
-
-  test("still fails when an empty review claims the risk persists", () => {
-    expect(() =>
-      assertPriorFindingsRechecked(
-        {
-          ...candidate,
-          comments: [],
-          priorFindingDispositions: [
-            { index: 0, commentIndex: 0, reason: "Still reachable at HEAD" },
-          ],
-        },
-        1,
-      ),
-    ).toThrow(/nonexistent comment/);
-  });
-
-  test.each([
-    "Prefix check still fails at HEAD",
-    "memory address still vulnerable",
-    "suffix handling not fixed yet",
-    "the finding is not resolved",
-    "not removed yet",
-    "never reverted",
-  ])("never coerces persistence or negation language: %s", (reason) => {
+  test("normalizes dispositions instead of failing after repair", () => {
     const submission = {
       ...candidate,
       comments: [],
-      priorFindingDispositions: [{ index: 0, commentIndex: 0, reason }],
+      priorFindingDispositions: [
+        { index: 0, commentIndex: 0, reason: "Still reachable at HEAD" },
+        { index: 0, commentIndex: null, reason: "duplicate" },
+        { index: 9, commentIndex: null, reason: "out of range" },
+      ],
     } as CandidatesPass;
-    expect(() => assertPriorFindingsRechecked(submission, 1)).toThrow(
-      /nonexistent comment/,
-    );
-    expect(submission.priorFindingDispositions![0]!.commentIndex).toBe(0);
+    normalizePriorFindings(submission, 2);
+    expect(submission.priorFindingDispositions).toEqual([
+      { index: 0, commentIndex: null, reason: "Still reachable at HEAD" },
+      { index: 1, commentIndex: null, reason: "not rechecked by the reviewer" },
+    ]);
+    expect(() => assertPriorFindingsRechecked(submission, 2)).not.toThrow();
   });
 
   async function reviewWithOutputs(
@@ -261,10 +230,14 @@ describe("incremental review orchestration", () => {
     },
   );
 
-  test("repeated invalid submissions fail with precise evidence", async () => {
-    await expect(
-      reviewWithOutputs({ ...candidate, priorFindingDispositions: [] }),
-    ).rejects.toThrow("prior finding 0 has no disposition");
+  test("repeated invalid dispositions are normalized, not fatal", async () => {
+    const result = await reviewWithOutputs({
+      ...candidate,
+      priorFindingDispositions: [],
+    });
+    expect(result.result.candidates.priorFindingDispositions).toEqual([
+      { index: 0, commentIndex: null, reason: "not rechecked by the reviewer" },
+    ]);
   });
 
   test("two-pass review retains old findings and gives validator the full PR diff", async () => {

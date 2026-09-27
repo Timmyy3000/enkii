@@ -101,6 +101,7 @@ export async function runReview(
     "If coverage is incomplete, set coverageComplete=false, explain the gap and do not claim the PR is safe.";
 
   let candidatesOutput: CandidatesPass | undefined;
+  let dispositionRepairs = 0;
   const pass1 = await agentRunner({
     systemPrompt: `You are enkii's ${kind} review runtime. Use tools to inspect files and submit structured output.`,
     userPrompt: pass1Prompt,
@@ -114,10 +115,16 @@ export async function runReview(
           CandidatesPassSchema,
           kind,
         );
-        assertPriorFindingsRechecked(
-          parsed,
-          preparedContext.priorFindingCount ?? 0,
-        );
+        const priorCount = preparedContext.priorFindingCount ?? 0;
+        try {
+          assertPriorFindingsRechecked(parsed, priorCount);
+        } catch (error) {
+          if (dispositionRepairs++ < 1) throw error;
+          console.warn(
+            `enkii: ${kind} normalized prior-finding dispositions: ${(error as Error).message}`,
+          );
+          normalizePriorFindings(parsed, priorCount);
+        }
         assertCandidateMetadata(parsed, preparedContext);
         candidatesOutput = parsed;
       }),
@@ -283,26 +290,6 @@ function synthesizeValidatedFromCandidates(
   };
 }
 
-// Resolution language that justifies coercing a dangling commentIndex to null
-// when the submission carries no comments. Word-boundaried on purpose:
-// substring matching silently drops live findings ("prefix" contains "fix").
-// Persistence or negated-resolution language vetoes the coercion so the
-// submission fails and the repair retry re-emits the comment instead.
-const RESOLVED_HINT =
-  /\b(resolv\w*|fix(?:ed|es)?|no longer valid|addressed|remov\w*|revert\w*|gone|obsolete|not present|clean)\b/i;
-const PERSISTED_HINT =
-  /\b(still|persist\w*|reachab\w*|remain\w*|unresolv\w*|outstanding)\b/i;
-const NEGATED_HINT =
-  /\b(not|never)\b[\s\w]{0,30}\b(resolv\w*|fix(?:ed|es)?|addressed|remov\w*|revert\w*|gone|obsolete|not present|no longer valid|clean)\b/i;
-
-function isResolvedEmptyDisposition(reason: string): boolean {
-  return (
-    RESOLVED_HINT.test(reason) &&
-    !PERSISTED_HINT.test(reason) &&
-    !NEGATED_HINT.test(reason)
-  );
-}
-
 export function assertPriorFindingsRechecked(
   candidates: CandidatesPass,
   count: number,
@@ -318,22 +305,10 @@ export function assertPriorFindingsRechecked(
     if (seen.has(d.index))
       issues.push(`prior finding ${d.index} has duplicate dispositions`);
     seen.add(d.index);
-    if (d.commentIndex !== null && !candidates.comments[d.commentIndex]) {
-      // ponytail: the model systematically submits commentIndex 0 with an empty
-      // comments array when the fix already landed. Coerce to null only then —
-      // dispositions are never posted, only comments are — and keep failing
-      // when the reason claims the risk persists, so real findings stay visible.
-      if (
-        candidates.comments.length === 0 &&
-        isResolvedEmptyDisposition(d.reason ?? "")
-      ) {
-        d.commentIndex = null;
-      } else {
-        issues.push(
-          `prior finding ${d.index}: commentIndex ${d.commentIndex} references a nonexistent comment. If no findings survive, submit comments: [] with every disposition set to commentIndex: null and the fix explained`,
-        );
-      }
-    }
+    if (d.commentIndex !== null && !candidates.comments[d.commentIndex])
+      issues.push(
+        `prior finding ${d.index}: commentIndex ${d.commentIndex} references a nonexistent comment. If no findings survive, submit comments: [] with every disposition set to commentIndex: null and the fix explained`,
+      );
     if (!d.reason.trim())
       issues.push(`prior finding ${d.index} needs a concrete reason`);
   }
@@ -344,6 +319,41 @@ export function assertPriorFindingsRechecked(
     throw new Error(
       `enkii: invalid prior-finding dispositions: ${issues.join("; ")}. Return one entry per prior finding with a concrete reason; use commentIndex=null only when resolved or no longer valid.`,
     );
+}
+
+/**
+ * Dispositions are recheck bookkeeping: nothing posts or resolves threads from
+ * them. After one repair round, repair them instead of failing the whole lane,
+ * so a bookkeeping slip never turns a finished review into a failed check.
+ */
+export function normalizePriorFindings(
+  candidates: CandidatesPass,
+  count: number,
+): void {
+  const byIndex = new Map<
+    number,
+    NonNullable<CandidatesPass["priorFindingDispositions"]>[number]
+  >();
+  for (const d of candidates.priorFindingDispositions ?? []) {
+    if (d.index >= count || byIndex.has(d.index)) continue;
+    const dangling =
+      d.commentIndex !== null && !candidates.comments[d.commentIndex];
+    byIndex.set(d.index, {
+      index: d.index,
+      commentIndex: dangling ? null : d.commentIndex,
+      reason: d.reason?.trim() || "not rechecked by the reviewer",
+    });
+  }
+  for (let index = 0; index < count; index++)
+    if (!byIndex.has(index))
+      byIndex.set(index, {
+        index,
+        commentIndex: null,
+        reason: "not rechecked by the reviewer",
+      });
+  candidates.priorFindingDispositions = [...byIndex.values()].sort(
+    (a, b) => a.index - b.index,
+  );
 }
 
 function assertCandidateMetadata(

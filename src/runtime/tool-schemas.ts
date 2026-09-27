@@ -33,7 +33,7 @@ export const SubmitCandidatesParameters = Type.Object({
       Type.Object({
         index: Type.Integer({ minimum: 0 }),
         commentIndex: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]),
-        reason: Type.String({ minLength: 1 }),
+        reason: Type.String(),
       }),
     ),
   ),
