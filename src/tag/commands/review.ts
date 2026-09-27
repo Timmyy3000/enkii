@@ -284,10 +284,24 @@ function synthesizeValidatedFromCandidates(
 }
 
 // Resolution language that justifies coercing a dangling commentIndex to null
-// when the submission carries no comments. Narrow on purpose: a persisted risk
-// must keep failing so the repair retry re-emits the comment instead.
+// when the submission carries no comments. Word-boundaried on purpose:
+// substring matching silently drops live findings ("prefix" contains "fix").
+// Persistence or negated-resolution language vetoes the coercion so the
+// submission fails and the repair retry re-emits the comment instead.
 const RESOLVED_HINT =
-  /resolv|fix|no longer|address|remov|revert|gone|obsolete|not present|clean/i;
+  /\b(resolv\w*|fix(?:ed|es)?|no longer valid|addressed|remov\w*|revert\w*|gone|obsolete|not present|clean)\b/i;
+const PERSISTED_HINT =
+  /\b(still|persist\w*|reachab\w*|remain\w*|unresolv\w*|outstanding)\b/i;
+const NEGATED_HINT =
+  /\b(not|never)\b[\s\w]{0,30}\b(resolv\w*|fix(?:ed|es)?|addressed|gone|obsolete|clean)\b/i;
+
+function isResolvedEmptyDisposition(reason: string): boolean {
+  return (
+    RESOLVED_HINT.test(reason) &&
+    !PERSISTED_HINT.test(reason) &&
+    !NEGATED_HINT.test(reason)
+  );
+}
 
 export function assertPriorFindingsRechecked(
   candidates: CandidatesPass,
@@ -311,7 +325,7 @@ export function assertPriorFindingsRechecked(
       // when the reason claims the risk persists, so real findings stay visible.
       if (
         candidates.comments.length === 0 &&
-        RESOLVED_HINT.test(d.reason ?? "")
+        isResolvedEmptyDisposition(d.reason ?? "")
       ) {
         d.commentIndex = null;
       } else {

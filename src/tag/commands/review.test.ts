@@ -132,6 +132,23 @@ describe("incremental review orchestration", () => {
     ).toThrow(/nonexistent comment/);
   });
 
+  test.each([
+    "Prefix check still fails at HEAD",
+    "memory address still vulnerable",
+    "suffix handling not fixed yet",
+    "the finding is not resolved",
+  ])("never coerces persistence or negation language: %s", (reason) => {
+    const submission = {
+      ...candidate,
+      comments: [],
+      priorFindingDispositions: [{ index: 0, commentIndex: 0, reason }],
+    } as CandidatesPass;
+    expect(() => assertPriorFindingsRechecked(submission, 1)).toThrow(
+      /nonexistent comment/,
+    );
+    expect(submission.priorFindingDispositions![0]!.commentIndex).toBe(0);
+  });
+
   async function reviewWithOutputs(
     pass1: CandidatesPass | CandidatesPass[],
     pass2?: ValidatedPass,
