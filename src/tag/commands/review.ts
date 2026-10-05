@@ -144,7 +144,6 @@ export async function runReview(
   );
 
   const candidates = pass1.output;
-  candidates.coverageComplete ??= false;
   await writeFile(candidatesPath, JSON.stringify(candidates, null, 2));
   console.log(
     `enkii: ${kind} Pass 1 produced ${candidates.comments.length} candidates → ${candidatesPath}`,

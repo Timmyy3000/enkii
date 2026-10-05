@@ -4,6 +4,10 @@ All notable changes to enkii will be documented here. Format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Fixed (1.3.2)
+
+- Require `coverageComplete` in every review submission and show it in the output examples. Code reviews that omitted it were reported as "Coverage: incomplete" with a 1/5 mergeability score despite a complete, clean review; a missing value is now rejected and corrected in the same session.
+
 ### Added
 
 - Explain per-lane incremental reuse or full-review fallback in logs, diagnostic artifacts, and job summaries, including the relevant checkpoint commit and triggering event.
