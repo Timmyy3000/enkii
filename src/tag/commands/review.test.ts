@@ -254,14 +254,18 @@ describe("incremental review orchestration", () => {
     expect(prompts[1]).toContain(join(cwd, "review_candidates.json"));
     expect(prompts[1]).toContain("Do not reject a retained finding merely");
   });
-  test("validation cannot promote missing or incomplete coverage to complete", async () => {
-    for (const coverageComplete of [undefined, false]) {
-      const { result } = await reviewWithOutputs(
-        { ...candidate, coverageComplete },
-        validation(),
-      );
-      expect(result.validated.coverageComplete).toBe(false);
-    }
+  test("validation cannot promote incomplete coverage to complete", async () => {
+    const { result } = await reviewWithOutputs(
+      { ...candidate, coverageComplete: false },
+      validation(),
+    );
+    expect(result.validated.coverageComplete).toBe(false);
+  });
+  test("a submission without coverageComplete is rejected rather than read as incomplete", async () => {
+    const { coverageComplete: _omitted, ...missing } = candidate;
+    await expect(
+      reviewWithOutputs(missing as typeof candidate),
+    ).rejects.toThrow("coverageComplete");
   });
   test("validator omissions and changed multiline anchors fail before posting", async () => {
     await expect(

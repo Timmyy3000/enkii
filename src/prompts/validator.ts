@@ -88,6 +88,7 @@ When finished, call \`submit_validation\` exactly once using this schema:
 \`\`\`json
 {
   "version": 1,
+  "coverageComplete": true,
   "meta": {
     "repo": "${repoFullName}",
     "prNumber": ${prNumber},

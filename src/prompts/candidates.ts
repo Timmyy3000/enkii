@@ -87,6 +87,7 @@ When finished, call \`submit_review\` exactly once using this exact schema:
 \`\`\`json
 {
   "version": 1,
+  "coverageComplete": true,
   "meta": {
     "repo": "owner/repo",
     "prNumber": 123,

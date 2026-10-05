@@ -22,12 +22,10 @@ const CandidateSchema = Type.Object({
 
 export const SubmitCandidatesParameters = Type.Object({
   version: Type.Literal(1),
-  coverageComplete: Type.Optional(
-    Type.Boolean({
-      description:
-        "True only after completing the assigned review scope, cross-file impact checks and all prior finding rechecks.",
-    }),
-  ),
+  coverageComplete: Type.Boolean({
+    description:
+      "Required. True only after completing the assigned review scope, cross-file impact checks and all prior finding rechecks.",
+  }),
   priorFindingDispositions: Type.Optional(
     Type.Array(
       Type.Object({
@@ -66,7 +64,7 @@ const RejectedValidatedItemSchema = Type.Object({
 
 export const SubmitValidatedParameters = Type.Object({
   version: Type.Literal(1),
-  coverageComplete: Type.Optional(Type.Boolean()),
+  coverageComplete: Type.Boolean({ description: "Required." }),
   meta: Type.Object({
     repo: Type.String(),
     prNumber: Type.Union([Type.Number(), Type.String()]),

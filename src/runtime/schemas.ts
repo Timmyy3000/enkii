@@ -26,7 +26,7 @@ export const CandidateSchema = z.object({
 
 export const CandidatesPassSchema = z.object({
   version: z.literal(1),
-  coverageComplete: z.boolean().optional(),
+  coverageComplete: z.boolean(),
   priorFindingDispositions: z
     .array(
       z.object({
@@ -73,7 +73,7 @@ export const ValidatedItemSchema = z.discriminatedUnion("status", [
 
 export const ValidatedPassSchema = z.object({
   version: z.literal(1),
-  coverageComplete: z.boolean().optional(),
+  coverageComplete: z.boolean(),
   meta: z.object({
     repo: z.string(),
     prNumber: z.union([z.number(), z.string()]),
