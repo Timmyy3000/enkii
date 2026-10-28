@@ -125,6 +125,7 @@ runs:
       env:
         OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
         ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
+        ANTHROPIC_OAUTH_TOKEN: ""
         OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token != '' && inputs.github_token || github.token }}
         DEFAULT_WORKFLOW_TOKEN: ${{ github.token }}
         REVIEW_MODEL: ${{ inputs.review_model }}
