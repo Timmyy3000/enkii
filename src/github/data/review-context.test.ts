@@ -362,6 +362,9 @@ describe("posted checkpoints", () => {
     expect(reviewConfigHash("skill", "model", true, "runtime")).not.toBe(
       original,
     );
+    expect(
+      reviewConfigHash("skill", "model", false, "runtime", "xhigh"),
+    ).not.toBe(original);
     expect(reviewConfigHash("skill", "model", false, "new-runtime")).not.toBe(
       original,
     );

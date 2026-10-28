@@ -11,6 +11,7 @@
  *   - OVERRIDE_GITHUB_TOKEN     (custom GitHub App token; falls back to runner token)
  *   - REVIEW_MODEL              (default "@preset/enkii", or "claude-opus-5-5" with ANTHROPIC_API_KEY)
  *   - SECURITY_MODEL            (same default as REVIEW_MODEL)
+ *   - ENKII_EFFORT              (optional Anthropic effort: low | medium | high | xhigh | max)
  *   - REVIEW_SKILL_PATH         (optional consumer override)
  *   - SECURITY_SKILL_PATH       (optional consumer override)
  *   - POLICY_REVIEW_SKILL_PATH  (optional repository-owned policy prompt; empty disables)
@@ -91,6 +92,18 @@ function validateEnv(): void {
     throw new Error(
       "enkii received both openrouter_api_key and anthropic_api_key. " +
         "Fix: pass only the key for the provider you want enkii to use.",
+    );
+  }
+  const effort = process.env.ENKII_EFFORT?.trim();
+  if (effort && !anthropic) {
+    throw new Error(
+      "enkii received effort without anthropic_api_key. " +
+        "Fix: effort applies only to Anthropic models; remove it or use anthropic_api_key.",
+    );
+  }
+  if (effort && !["low", "medium", "high", "xhigh", "max"].includes(effort)) {
+    throw new Error(
+      `enkii received effort "${effort}". Fix: use low, medium, high, xhigh, or max.`,
     );
   }
   if (!openRouter && !anthropic) {
@@ -449,7 +462,13 @@ async function run(): Promise<void> {
         prNumber: context.entityNumber,
         kind,
         base: prBranch.baseRefOid ?? "",
-        config: reviewConfigHash(skillContent, model, enableValidator, runtime),
+        config: reviewConfigHash(
+          skillContent,
+          model,
+          enableValidator,
+          runtime,
+          process.env.ENKII_EFFORT?.trim(),
+        ),
       };
       const eligibilityReason = reuseEligibilityReason({
         enabled: envFlag("INCREMENTAL_REVIEW", true),

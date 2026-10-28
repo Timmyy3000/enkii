@@ -163,9 +163,10 @@ export function reviewConfigHash(
   model: string,
   validator: boolean,
   runtime: string,
+  effort = "",
 ): string {
   return createHash("sha256")
-    .update(JSON.stringify([1, skill, model, validator, runtime]))
+    .update(JSON.stringify([1, skill, model, validator, runtime, effort]))
     .digest("hex");
 }
 

@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 import type { Static } from "@mariozechner/pi-ai";
 import { SubmitCandidatesParameters } from "./tool-schemas";
 import { createSubmitCandidatesTool } from "./tools/submit";
-import { runAgent, agentTimeoutMs, getAgentModel } from "./run-agent";
+import {
+  runAgent,
+  agentTimeoutMs,
+  getAgentModel,
+  anthropicEffortHook,
+} from "./run-agent";
 
 describe("runAgent", () => {
   test("SDK preflight schema failures share the same one-correction cap", async () => {
@@ -561,6 +566,36 @@ describe("getAgentModel", () => {
     } finally {
       if (previous === undefined) delete process.env.ANTHROPIC_API_KEY;
       else process.env.ANTHROPIC_API_KEY = previous;
+    }
+  });
+});
+
+describe("anthropicEffortHook", () => {
+  test("adds effort to Anthropic payloads only when configured", async () => {
+    const previous = [process.env.ANTHROPIC_API_KEY, process.env.ENKII_EFFORT];
+    try {
+      process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+      process.env.ENKII_EFFORT = "xhigh";
+      const hook = anthropicEffortHook()!;
+      expect(
+        await hook({ model: "m", output_config: { format: "x" } }, {} as any),
+      ).toEqual({
+        model: "m",
+        output_config: { format: "x", effort: "xhigh" },
+      });
+
+      process.env.ENKII_EFFORT = "";
+      expect(anthropicEffortHook()).toBeUndefined();
+
+      process.env.ENKII_EFFORT = "xhigh";
+      process.env.ANTHROPIC_API_KEY = "";
+      expect(anthropicEffortHook()).toBeUndefined();
+    } finally {
+      const [key, effort] = previous;
+      if (key === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = key;
+      if (effort === undefined) delete process.env.ENKII_EFFORT;
+      else process.env.ENKII_EFFORT = effort;
     }
   });
 });

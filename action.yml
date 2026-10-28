@@ -53,6 +53,10 @@ inputs:
     description: "Reuse complete per-lane reviews on synchronize events; unsafe or unavailable checkpoints fall back to full review."
     required: false
     default: "true"
+  effort:
+    description: "Anthropic effort level for every review lane: low, medium, high, xhigh, or max. Empty uses the model's default. Requires anthropic_api_key."
+    required: false
+    default: ""
   agent_timeout_minutes:
     description: "Total time budget per review pass, including retries and output repair. Default: 30 minutes; maximum: 120."
     required: false
@@ -138,6 +142,7 @@ runs:
         RUN_SECURITY: ${{ inputs.run_security }}
         INCREMENTAL_REVIEW: ${{ inputs.incremental_review }}
         ENKII_AGENT_TIMEOUT_MINUTES: ${{ inputs.agent_timeout_minutes }}
+        ENKII_EFFORT: ${{ inputs.effort }}
         ENKII_DIAGNOSTICS: ${{ inputs.diagnostics }}
         ENKII_DIAGNOSTIC_PAYLOADS: ${{ inputs.diagnostic_payloads }}
 
