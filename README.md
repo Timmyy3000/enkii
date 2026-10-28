@@ -4,7 +4,7 @@ Open-source AI code review for GitHub pull requests.
 
 Built by [@timithechef](https://x.com/timithechef).
 
-Enkii is a **Greptile / CodeRabbit-style alternative** built on **PI + GitHub Actions** with a simple model: bring your own OpenRouter key, keep prompts editable, and run reviews in your own repo.
+Enkii is a **Greptile / CodeRabbit-style alternative** built on **PI + GitHub Actions** with a simple model: bring your own OpenRouter or Anthropic key, keep prompts editable, and run reviews in your own repo.
 
 ## Name origin
 
@@ -17,7 +17,7 @@ Most AI review tools are useful but closed, expensive, or hard to tune. Enkii is
 - No vendor lock-in
 - Editable review behavior (markdown skill files)
 - Transparent, repo-native automation
-- Bring-your-own model/provider via OpenRouter
+- Bring-your-own model/provider via OpenRouter, or Claude directly through the Anthropic API
 
 ## What enkii does today
 
@@ -36,12 +36,14 @@ Most AI review tools are useful but closed, expensive, or hard to tune. Enkii is
 
 Use the moving `v0.2` tag unless you need strict pinning to one exact build. `v0.2` will be moved forward to the latest compatible `0.2.x` release, while exact tags like `v0.2.0-beta.4` stay immutable.
 
-### 1) Add OpenRouter key
+### 1) Add a model provider key
 
-Create a repo secret:
+Create a repo secret for one provider:
 
-- Name: `OPENROUTER_API_KEY`
-- Value: your key from <https://openrouter.ai/keys>
+- OpenRouter: name `OPENROUTER_API_KEY`, value from <https://openrouter.ai/keys>
+- Anthropic: name `ANTHROPIC_API_KEY`, value from <https://platform.claude.com>
+
+The workflow below uses OpenRouter. For Anthropic, see [Using Claude through the Anthropic API](#using-claude-through-the-anthropic-api).
 
 ### 2) Add workflow
 
@@ -96,13 +98,28 @@ enkii runs automatically. You can then comment with:
 
 ## Model configuration
 
-By default, enkii uses:
+With an OpenRouter key, enkii uses by default:
 
 - `review_model: "@preset/enkii"`
 - `security_model: "@preset/enkii"`
 - `policy_review_model: ""` (inherits `review_model`)
 
 That means your OpenRouter account should have a preset named `enkii`.
+
+### Using Claude through the Anthropic API
+
+Pass `anthropic_api_key` instead of `openrouter_api_key`. enkii then calls the Anthropic API directly and defaults every lane to `claude-opus-5-5`:
+
+```yaml
+- name: Run enkii
+  uses: Timmyy3000/enkii@v0.2
+  with:
+    anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+    # optional: any Anthropic model id, e.g. claude-sonnet-5-5 for lower cost
+    review_model: claude-opus-5-5
+```
+
+Model inputs take Anthropic model ids (`claude-sonnet-5-5`, `claude-haiku-5-5`), not OpenRouter ids. Set only one of the two keys. enkii fails fast when both are present.
 
 ### Recommended preset path
 
@@ -143,10 +160,11 @@ uses: Timmyy3000/enkii@v0.2.0-beta.4
 
 | Input | Required | Default | Description |
 |---|---|---|---|
-| `openrouter_api_key` | yes | — | OpenRouter API key |
+| `openrouter_api_key` | one of | `""` | OpenRouter API key |
+| `anthropic_api_key` | one of | `""` | Anthropic API key; routes all lanes to the Anthropic API |
 | `github_token` | no | workflow `github.token` | Override token (advanced) |
-| `review_model` | no | `@preset/enkii` | Model for code review |
-| `security_model` | no | `@preset/enkii` | Model for security review |
+| `review_model` | no | `@preset/enkii` (OpenRouter) or `claude-opus-5-5` (Anthropic) | Model for code review |
+| `security_model` | no | same as `review_model` default | Model for security review |
 | `review_skill_path` | no | `""` | Custom review skill path |
 | `security_skill_path` | no | `""` | Custom security skill path |
 | `policy_review_skill_path` | no | `""` | Repository-owned policy review prompt; empty disables policy review |
@@ -254,7 +272,7 @@ On `pull_request` open, synchronize, and reopen events, the policy agent runs co
 
 If you’re asking an AI agent to set up enkii in a repository, give it this checklist:
 
-1. Create secret `OPENROUTER_API_KEY`
+1. Create secret `OPENROUTER_API_KEY` (or `ANTHROPIC_API_KEY` and pass it as `anthropic_api_key`)
 2. Create `.github/workflows/enkii-review.yml` using the workflow above
 3. Ensure workflow has `actions/checkout@v7` with `fetch-depth: 0`
 4. Ensure permissions include `pull-requests: write`, `issues: write`, `contents: read`
@@ -275,14 +293,15 @@ If you’re asking an AI agent to set up enkii in a repository, give it this che
 
 ## Troubleshooting
 
-### `OPENROUTER_API_KEY` missing
+### Provider key missing
 
-Error example: `enkii could not find OPENROUTER_API_KEY`
+Error example: `enkii could not find OPENROUTER_API_KEY or ANTHROPIC_API_KEY`
 
 Fix:
 1. Go to **Settings → Secrets and variables → Actions**
-2. Add repository secret `OPENROUTER_API_KEY`
-3. Re-run the failed workflow job
+2. Add repository secret `OPENROUTER_API_KEY` or `ANTHROPIC_API_KEY`
+3. Pass it to the action as `openrouter_api_key` or `anthropic_api_key`
+4. Re-run the failed workflow job
 
 ### Runs are unexpectedly canceled
 
