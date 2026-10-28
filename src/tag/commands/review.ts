@@ -15,6 +15,7 @@
 import { writeFile, mkdir } from "fs/promises";
 import { dirname, join } from "path";
 import { createReadOnlyTools } from "@mariozechner/pi-coding-agent";
+import { confineTools } from "../../runtime/tools/confine";
 import { Type } from "@mariozechner/pi-ai";
 import type { infer as zInfer, ZodTypeAny } from "zod";
 import { runAgent, type RunAgentResult } from "../../runtime/run-agent";
@@ -240,7 +241,7 @@ function createContextTools(
   ];
 
   return [
-    ...createReadOnlyTools(workingDir),
+    ...confineTools(createReadOnlyTools(workingDir), workingDir, allowedRoots),
     createArtifactPathsTool(allowedRoots),
   ];
 }

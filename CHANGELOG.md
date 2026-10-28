@@ -4,6 +4,10 @@ All notable changes to enkii will be documented here. Format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Security
+
+- Confine the review agent's `read`, `grep`, `find`, and `ls` tools to the checkout and review artifact directories, resolving symlinks, and keep them out of `.git`. Previously a prompt-injected PR could ask the agent to read `/proc/self/environ` (which holds the provider API key) or grep `.git/config` (which holds the checkout's GitHub token) and quote the result in a posted review.
+
 ### Fixed (1.3.2)
 
 - Require `coverageComplete` in every review submission and show it in the output examples. Code reviews that omitted it were reported as "Coverage: incomplete" with a 1/5 mergeability score despite a complete, clean review; a missing value is now rejected and corrected in the same session.
