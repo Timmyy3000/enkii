@@ -1,6 +1,7 @@
 import {
   Agent,
   type AgentEvent,
+  type AgentOptions,
   type AgentTool,
 } from "@mariozechner/pi-agent-core";
 import {
@@ -94,6 +95,15 @@ export function getAgentModel(modelId: string): Model<any> {
   return process.env.ANTHROPIC_API_KEY?.trim()
     ? getAnthropicModel(modelId)
     : getOpenRouterModel(modelId);
+}
+
+export function anthropicEffortHook(): AgentOptions["onPayload"] {
+  const effort = process.env.ENKII_EFFORT?.trim();
+  if (!effort || !process.env.ANTHROPIC_API_KEY?.trim()) return undefined;
+  return (payload) => {
+    const params = payload as { output_config?: Record<string, unknown> };
+    return { ...params, output_config: { ...params.output_config, effort } };
+  };
 }
 
 function emptyUsage(): Usage {
@@ -267,6 +277,7 @@ async function runAgentAttempt<T>(
     options.createAgent ??
     ((args: ConstructorParameters<typeof Agent>[0]) => new Agent(args));
   const agent = createAgent({
+    onPayload: anthropicEffortHook(),
     initialState: {
       systemPrompt: options.systemPrompt,
       model: getAgentModel(options.model),

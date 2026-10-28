@@ -119,6 +119,8 @@ Pass `anthropic_api_key` instead of `openrouter_api_key`. enkii then calls the A
     review_model: claude-opus-5-5
 ```
 
+Set `effort` (`low`, `medium`, `high`, `xhigh`, `max`) to trade review depth against cost. Empty uses the model's default. For example, `review_model: claude-haiku-5-5` with `effort: xhigh` is a low-cost setup.
+
 Model inputs take Anthropic model ids (`claude-sonnet-5-5`, `claude-haiku-5-5`), not OpenRouter ids. Set only one of the two keys. enkii fails fast when both are present.
 
 ### Recommended preset path
@@ -172,6 +174,7 @@ uses: Timmyy3000/enkii@v0.2.0-beta.4
 | `enable_validator` | no | `"false"` | Two-pass review validation |
 | `run_security` | no | `"true"` | Auto-run security review on PR events |
 | `incremental_review` | no | `"true"` | Reuse completed lane coverage on eligible source-only PR updates; falls back to full review when reuse cannot be verified |
+| `effort` | no | `""` | Anthropic effort for every lane (`low` to `max`); requires `anthropic_api_key` |
 | `agent_timeout_minutes` | no | `"30"` | Total per-pass time budget, including retries and output repair (maximum `120`) |
 | `diagnostics` | no | `"true"` | Write a bounded, sanitized job summary and three-day workflow artifact |
 | `diagnostic_payloads` | no | `"false"` | Include redacted structured submission payloads in diagnostics |
