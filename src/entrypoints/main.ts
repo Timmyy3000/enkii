@@ -462,7 +462,13 @@ async function run(): Promise<void> {
         prNumber: context.entityNumber,
         kind,
         base: prBranch.baseRefOid ?? "",
-        config: reviewConfigHash(skillContent, model, enableValidator, runtime),
+        config: reviewConfigHash(
+          skillContent,
+          model,
+          enableValidator,
+          runtime,
+          process.env.ENKII_EFFORT?.trim(),
+        ),
       };
       const eligibilityReason = reuseEligibilityReason({
         enabled: envFlag("INCREMENTAL_REVIEW", true),
