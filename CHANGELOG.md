@@ -10,6 +10,7 @@ All notable changes to enkii will be documented here. Format follows [Keep a Cha
 
 ### Added
 
+- `effort` input: set the Anthropic effort level (`low` through `max`) for every review lane. Rejected without `anthropic_api_key` or with an unknown value.
 - `anthropic_api_key` input: run every review lane on Claude through the Anthropic API instead of OpenRouter. Model inputs default to `claude-opus-5-5` and accept any Anthropic model id. `openrouter_api_key` is no longer required, and setting both keys fails fast.
 - Explain per-lane incremental reuse or full-review fallback in logs, diagnostic artifacts, and job summaries, including the relevant checkpoint commit and triggering event.
 - Bounded diagnostics artifacts and GitHub job summaries for review scope, lane outcomes, timings, usage, and structured submission validation failures.
