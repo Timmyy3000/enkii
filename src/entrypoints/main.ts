@@ -6,10 +6,11 @@
  * (code + security + configured policy review in parallel) → post.
  *
  * Inputs (env):
- *   - OPENROUTER_API_KEY        (required)
+ *   - OPENROUTER_API_KEY        (exactly one of this or ANTHROPIC_API_KEY)
+ *   - ANTHROPIC_API_KEY         (routes models to the Anthropic API directly)
  *   - OVERRIDE_GITHUB_TOKEN     (custom GitHub App token; falls back to runner token)
- *   - REVIEW_MODEL              (default "@preset/enkii")
- *   - SECURITY_MODEL            (default "@preset/enkii")
+ *   - REVIEW_MODEL              (default "@preset/enkii", or "claude-opus-5-5" with ANTHROPIC_API_KEY)
+ *   - SECURITY_MODEL            (same default as REVIEW_MODEL)
  *   - REVIEW_SKILL_PATH         (optional consumer override)
  *   - SECURITY_SKILL_PATH       (optional consumer override)
  *   - POLICY_REVIEW_SKILL_PATH  (optional repository-owned policy prompt; empty disables)
@@ -84,12 +85,22 @@ function envFlag(name: string, defaultValue: boolean): boolean {
 }
 
 function validateEnv(): void {
-  if (!process.env.OPENROUTER_API_KEY?.trim()) {
+  const openRouter = Boolean(process.env.OPENROUTER_API_KEY?.trim());
+  const anthropic = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+  if (openRouter && anthropic) {
     throw new Error(
-      "enkii could not find OPENROUTER_API_KEY. " +
+      "enkii received both openrouter_api_key and anthropic_api_key. " +
+        "Fix: pass only the key for the provider you want enkii to use.",
+    );
+  }
+  if (!openRouter && !anthropic) {
+    throw new Error(
+      "enkii could not find OPENROUTER_API_KEY or ANTHROPIC_API_KEY. " +
         "Cause: the secret is not set on this repo. " +
         "Fix: Settings → Secrets and variables → Actions → New repository secret " +
-        "→ name OPENROUTER_API_KEY, value from https://openrouter.ai/keys",
+        "→ name OPENROUTER_API_KEY (from https://openrouter.ai/keys) or " +
+        "ANTHROPIC_API_KEY (from https://platform.claude.com), then pass it as " +
+        "openrouter_api_key or anthropic_api_key.",
     );
   }
 }
@@ -210,8 +221,11 @@ async function run(): Promise<void> {
     validateEnv();
     reportUsage();
 
-    const reviewModel = process.env.REVIEW_MODEL || "@preset/enkii";
-    const securityModel = process.env.SECURITY_MODEL || "@preset/enkii";
+    const defaultModel = process.env.ANTHROPIC_API_KEY?.trim()
+      ? "claude-opus-5-5"
+      : "@preset/enkii";
+    const reviewModel = process.env.REVIEW_MODEL || defaultModel;
+    const securityModel = process.env.SECURITY_MODEL || defaultModel;
     const policyModel = process.env.POLICY_REVIEW_MODEL || reviewModel;
     const reviewSkillPath = process.env.REVIEW_SKILL_PATH || "";
     const securitySkillPath = process.env.SECURITY_SKILL_PATH || "";

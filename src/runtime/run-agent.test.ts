@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Static } from "@mariozechner/pi-ai";
 import { SubmitCandidatesParameters } from "./tool-schemas";
 import { createSubmitCandidatesTool } from "./tools/submit";
-import { runAgent, agentTimeoutMs } from "./run-agent";
+import { runAgent, agentTimeoutMs, getAgentModel } from "./run-agent";
 
 describe("runAgent", () => {
   test("SDK preflight schema failures share the same one-correction cap", async () => {
@@ -537,5 +537,30 @@ describe("runAgent", () => {
     expect(prompts).toBe(3);
     expect(result.usage.totalTokens).toBe(36);
     expect(result.usage.cost.total).toBe(6);
+  });
+});
+
+describe("getAgentModel", () => {
+  test("routes to Anthropic without a thinking param when ANTHROPIC_API_KEY is set", () => {
+    const previous = process.env.ANTHROPIC_API_KEY;
+    try {
+      process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+      const model = getAgentModel("claude-opus-5-5");
+      expect([model.provider, model.api, model.id, model.reasoning]).toEqual([
+        "anthropic",
+        "anthropic-messages",
+        "claude-opus-5-5",
+        false,
+      ]);
+      expect(getAgentModel("claude-sonnet-4-6").cost.input).toBe(3);
+
+      process.env.ANTHROPIC_API_KEY = " ";
+      expect(getAgentModel("deepseek/deepseek-v4-pro").provider).toBe(
+        "openrouter",
+      );
+    } finally {
+      if (previous === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = previous;
+    }
   });
 });

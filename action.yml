@@ -1,25 +1,30 @@
 name: "enkii"
-description: "Open-source AI code review for GitHub PRs. Bring your own OpenRouter key. No vendor lock-in."
+description: "Open-source AI code review for GitHub PRs. Bring your own OpenRouter or Anthropic key. No vendor lock-in."
 branding:
   icon: "eye"
   color: "purple"
 
 inputs:
   openrouter_api_key:
-    description: "OpenRouter API key (required). Generate at https://openrouter.ai/keys."
-    required: true
+    description: "OpenRouter API key. Generate at https://openrouter.ai/keys. Set exactly one of openrouter_api_key or anthropic_api_key."
+    required: false
+    default: ""
+  anthropic_api_key:
+    description: "Anthropic API key. Generate at https://platform.claude.com. When set, enkii calls Claude models directly through the Anthropic API instead of OpenRouter."
+    required: false
+    default: ""
   github_token:
     description: "GitHub token. If unset, the action falls back to the runner's automatic GITHUB_TOKEN (i.e. github.token). Set this only if you need a custom GitHub App token."
     required: false
     default: ""
   review_model:
-    description: "Model used for code review. Defaults to '@preset/enkii' which expects an OpenRouter preset named 'enkii' on the consumer's account (recommended for caching). Override with any OpenRouter model id (e.g. 'deepseek/deepseek-v4-pro') if you don't want to use a preset."
+    description: "Model used for code review. Empty defaults to '@preset/enkii' with OpenRouter (expects an OpenRouter preset named 'enkii', recommended for caching) or 'claude-opus-5-5' with an Anthropic key. Override with any OpenRouter model id (e.g. 'deepseek/deepseek-v4-pro') or Anthropic model id (e.g. 'claude-sonnet-5-5')."
     required: false
-    default: "@preset/enkii"
+    default: ""
   security_model:
     description: "Model used for security review. Same convention as review_model."
     required: false
-    default: "@preset/enkii"
+    default: ""
   review_skill_path:
     description: "Path to a custom review skill markdown file (relative to repo root). Empty = use bundled default."
     required: false
@@ -89,6 +94,11 @@ runs:
       shell: bash
       run: echo "::add-mask::${{ inputs.openrouter_api_key }}"
 
+    - name: Mask Anthropic API key
+      if: ${{ inputs.anthropic_api_key != '' }}
+      shell: bash
+      run: echo "::add-mask::${{ inputs.anthropic_api_key }}"
+
     - name: Setup Bun
       uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       with:
@@ -114,6 +124,8 @@ runs:
         bun run "${GITHUB_ACTION_PATH}/src/entrypoints/main.ts"
       env:
         OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
+        ANTHROPIC_OAUTH_TOKEN: ""
         OVERRIDE_GITHUB_TOKEN: ${{ inputs.github_token != '' && inputs.github_token || github.token }}
         DEFAULT_WORKFLOW_TOKEN: ${{ github.token }}
         REVIEW_MODEL: ${{ inputs.review_model }}
