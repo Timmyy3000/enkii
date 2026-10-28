@@ -3,7 +3,12 @@ import {
   type AgentEvent,
   type AgentTool,
 } from "@mariozechner/pi-agent-core";
-import { getModel, type Model, type Usage } from "@mariozechner/pi-ai";
+import {
+  getModel,
+  getModels,
+  type Model,
+  type Usage,
+} from "@mariozechner/pi-ai";
 import { recordDiagnostic } from "./diagnostics";
 
 type AgentLike = {
@@ -73,6 +78,22 @@ function getOpenRouterModel(modelId: string): Model<any> {
       },
     },
   };
+}
+
+function getAnthropicModel(modelId: string): Model<any> {
+  const base =
+    getModels("anthropic").find((model) => model.id === modelId) ??
+    getModel("anthropic", "claude-opus-4-7");
+  // pi-ai predates Claude 5 and sends thinking: {type: "disabled"} for
+  // reasoning models, which Claude 5 rejects. reasoning: false omits the
+  // thinking param so each model uses its own default.
+  return { ...base, id: modelId, name: modelId, reasoning: false };
+}
+
+export function getAgentModel(modelId: string): Model<any> {
+  return process.env.ANTHROPIC_API_KEY?.trim()
+    ? getAnthropicModel(modelId)
+    : getOpenRouterModel(modelId);
 }
 
 function emptyUsage(): Usage {
@@ -248,7 +269,7 @@ async function runAgentAttempt<T>(
   const agent = createAgent({
     initialState: {
       systemPrompt: options.systemPrompt,
-      model: getOpenRouterModel(options.model),
+      model: getAgentModel(options.model),
       thinkingLevel: "off",
       tools: options.tools.map((tool) =>
         tool.name !== options.outputToolName
