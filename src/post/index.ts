@@ -85,6 +85,8 @@ export async function postReviewFromValidated(args: {
   marker: string;
   inlineCap: number;
   checkpoint?: ReviewCheckpoint;
+  /** Still-present prior findings: tracked in the checkpoint, not re-posted. */
+  carriedFindings?: Candidate[];
 }): Promise<PostReviewResult> {
   const { validated, octokit, owner, repo, prNumber, marker, inlineCap } = args;
 
@@ -128,7 +130,10 @@ export async function postReviewFromValidated(args: {
       checkpoint.kind !== kind
     )
       return clean;
-    const metadata = encodeCheckpoint({ ...checkpoint, findings: approved });
+    const metadata = encodeCheckpoint({
+      ...checkpoint,
+      findings: [...approved, ...(args.carriedFindings ?? [])],
+    });
     return clean.length + metadata.length <= 60_000 ? clean + metadata : clean;
   };
   const summaryBody = withCheckpoint(

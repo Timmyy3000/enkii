@@ -43,32 +43,21 @@ const candidate: CandidatesPass = {
       line: 10,
       startLine: 8,
       side: "RIGHT",
-      body: "[P1] Existing risk",
+      body: "[P1] New risk in the delta",
     },
   ],
   priorFindingDispositions: [
-    { index: 0, commentIndex: 0, reason: "Still reachable at HEAD" },
+    { index: 0, status: "still_present", reason: "Still reachable at HEAD" },
   ],
   reviewSummary: { body: "Incremental review: existing risk still present." },
 };
 
 describe("incremental review orchestration", () => {
-  test("cannot silently omit a prior finding or reference a nonexistent result", () => {
+  test("cannot silently omit or duplicate a prior finding", () => {
     expect(() => assertPriorFindingsRechecked(candidate, 1)).not.toThrow();
     expect(() =>
       assertPriorFindingsRechecked(
         { ...candidate, priorFindingDispositions: [] },
-        1,
-      ),
-    ).toThrow();
-    expect(() =>
-      assertPriorFindingsRechecked(
-        {
-          ...candidate,
-          priorFindingDispositions: [
-            { index: 0, commentIndex: 3, reason: "Retained" },
-          ],
-        },
         1,
       ),
     ).toThrow();
@@ -92,7 +81,7 @@ describe("incremental review orchestration", () => {
           priorFindingDispositions: [
             {
               index: 0,
-              commentIndex: null,
+              status: "resolved",
               reason: "Removed the affected entrypoint",
             },
           ],
@@ -107,15 +96,15 @@ describe("incremental review orchestration", () => {
       ...candidate,
       comments: [],
       priorFindingDispositions: [
-        { index: 0, commentIndex: 0, reason: "Still reachable at HEAD" },
-        { index: 0, commentIndex: null, reason: "duplicate" },
-        { index: 9, commentIndex: null, reason: "out of range" },
+        { index: 0, status: "resolved", reason: "Fixed at HEAD" },
+        { index: 0, status: "resolved", reason: "duplicate" },
+        { index: 9, status: "resolved", reason: "out of range" },
       ],
     } as CandidatesPass;
     normalizePriorFindings(submission, 2);
     expect(submission.priorFindingDispositions).toEqual([
-      { index: 0, commentIndex: null, reason: "Still reachable at HEAD" },
-      { index: 1, commentIndex: null, reason: "not rechecked by the reviewer" },
+      { index: 0, status: "resolved", reason: "Fixed at HEAD" },
+      { index: 1, status: "still_present", reason: "not rechecked by the reviewer" },
     ]);
     expect(() => assertPriorFindingsRechecked(submission, 2)).not.toThrow();
   });
@@ -203,7 +192,7 @@ describe("incremental review orchestration", () => {
     },
   });
 
-  test.each(["missing", "invalid reference"])(
+  test.each(["missing", "duplicated"])(
     "repairs %s disposition in the same session before publishing",
     async (variant) => {
       const invalid = {
@@ -211,7 +200,10 @@ describe("incremental review orchestration", () => {
         priorFindingDispositions:
           variant === "missing"
             ? []
-            : [{ index: 0, commentIndex: 7, reason: "retained" }],
+            : [
+                candidate.priorFindingDispositions![0]!,
+                candidate.priorFindingDispositions![0]!,
+              ],
       };
       const { result, sessions, toolFeedback } = await reviewWithOutputs([
         invalid,
@@ -224,7 +216,7 @@ describe("incremental review orchestration", () => {
       expect(toolFeedback[0]).toContain(
         variant === "missing"
           ? "prior finding 0 has no disposition"
-          : "commentIndex 7 references a nonexistent comment",
+          : "prior finding 0 has duplicate dispositions",
       );
       expect(toolFeedback[1]).toContain("Review submitted");
     },
@@ -236,7 +228,7 @@ describe("incremental review orchestration", () => {
       priorFindingDispositions: [],
     });
     expect(result.result.candidates.priorFindingDispositions).toEqual([
-      { index: 0, commentIndex: null, reason: "not rechecked by the reviewer" },
+      { index: 0, status: "still_present", reason: "not rechecked by the reviewer" },
     ]);
     expect(result.result.candidates.coverageComplete).toBe(false);
   });

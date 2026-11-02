@@ -206,10 +206,9 @@ function structuralPayload(value: unknown): unknown {
               : {};
           return {
             index: typeof item.index === "number" ? item.index : undefined,
-            commentIndex:
-              typeof item.commentIndex === "number" ||
-              item.commentIndex === null
-                ? item.commentIndex
+            status:
+              item.status === "still_present" || item.status === "resolved"
+                ? item.status
                 : undefined,
             reasonPresent:
               typeof item.reason === "string" && item.reason.length > 0,

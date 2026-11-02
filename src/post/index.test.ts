@@ -51,6 +51,71 @@ function makeValidated(): ValidatedPass {
 }
 
 describe("postReviewFromValidated", () => {
+  test("still-present prior findings stay in the checkpoint without being posted again", async () => {
+    const checkpoint: ReviewCheckpoint = {
+      version: 1,
+      repository: "Docsyde/docsyde-backend",
+      prNumber: 294,
+      kind: "code",
+      base: "b".repeat(40),
+      head: "a".repeat(40),
+      config: "config",
+      findings: [],
+    };
+    const carried = {
+      path: "src/token.ts",
+      line: 7,
+      side: "RIGHT" as const,
+      body: "[P2] Accepted residual risk",
+    };
+    const calls: any[] = [];
+    const octokit = {
+      paginate: async () => [
+        { filename: "src/service.ts", patch: "@@ -10,2 +10,3 @@\n context\n+added\n context" },
+      ],
+      rest: {
+        pulls: {
+          listFiles() {},
+          createReview: async (args: any) => {
+            calls.push(args);
+            return { data: { id: 1 } };
+          },
+        },
+      },
+    } as unknown as Octokit;
+    const validated = makeValidated();
+    validated.meta.headSha = checkpoint.head;
+    validated.results = validated.results.slice(0, 1);
+    await postReviewFromValidated({
+      validated,
+      octokit,
+      owner: "Docsyde",
+      repo: "docsyde-backend",
+      prNumber: 294,
+      marker: ENKII_REVIEW_MARKER,
+      inlineCap: 20,
+      checkpoint,
+      carriedFindings: [carried],
+    });
+    const review = calls.at(-1);
+    expect(review.comments.map((c: any) => c.path)).toEqual(["src/service.ts"]);
+    const decoded = findCheckpoint(
+      [
+        {
+          body: review.body,
+          commit_id: checkpoint.head,
+          state: "COMMENTED",
+          user: { login: "github-actions[bot]", type: "Bot" },
+        },
+      ],
+      checkpoint,
+    );
+    expect(decoded?.findings.map((f) => f.body)).toEqual([
+      "[P1] Valid anchor\n\nThis can be posted inline.",
+      "[P2] Accepted residual risk",
+    ]);
+  });
+
   test("checkpoint survives summary fallback with all findings, but never incomplete coverage", async () => {
     const checkpoint: ReviewCheckpoint = {
       version: 1,

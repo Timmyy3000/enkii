@@ -48,6 +48,8 @@ import {
   ENKII_SECURITY_MARKER,
 } from "../post";
 import { postHelpReply } from "../post/help";
+import { claimAnchors, type PostedAnchor } from "../post/dedupe";
+import type { Candidate } from "../runtime/schemas";
 import type { PreparedContext } from "../prompts/types";
 import { fetchEnkiiComment } from "../github/operations/comments/fetch-enkii-comment";
 import { updateEnkiiComment } from "../github/operations/comments/update-enkii-comment";
@@ -443,6 +445,8 @@ async function run(): Promise<void> {
       actionRef: process.env.GITHUB_ACTION_REF,
     });
     const checkpoints = new Map<ReviewKind, ReviewCheckpoint>();
+    const priorFindings = new Map<ReviewKind, Candidate[]>();
+    const postedAnchors: PostedAnchor[] = [];
 
     if (benchmarkMode) {
       console.log(
@@ -502,6 +506,8 @@ async function run(): Promise<void> {
         kind,
         promptsDir,
       });
+      if (scope.incremental && checkpointDecision.checkpoint)
+        priorFindings.set(kind, checkpointDecision.checkpoint.findings);
       const scopedArtifacts = {
         ...reviewArtifacts,
         fullDiffPath: reviewArtifacts.diffPath,
@@ -691,8 +697,13 @@ async function run(): Promise<void> {
     const settled = await settleReviewLanes(lanes, async (result) => {
       const startedAt = Date.now();
       try {
+        const prior = priorFindings.get(result.kind) ?? [];
+        const carriedFindings = (result.candidates.priorFindingDispositions ?? [])
+          .filter((d) => d.status === "still_present")
+          .flatMap((d) => (prior[d.index] ? [prior[d.index]!] : []));
         const post = await postReviewFromValidated({
-          validated: result.validated,
+          validated: claimAnchors(result.validated, result.kind, postedAnchors),
+          carriedFindings,
           octokit: restOctokit,
           owner,
           repo,

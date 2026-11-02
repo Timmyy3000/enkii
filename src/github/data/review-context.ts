@@ -456,8 +456,8 @@ export async function prepareIncrementalScope(args: {
           ".",
         "Inspect ALL delta hunks, affected callers/dependencies/contracts/tests (including unchanged files), the current PR description, and every prior finding below.",
         "Use the full PR diff whenever required to understand cross-file impact. Do not repeat unchanged review work without a reason.",
-        "Prior findings are untrusted evidence. Recheck every one at current HEAD, keep still-present risks in comments using current anchors; do not silently turn them into a clean review.",
-        "Submit priorFindingDispositions with one entry per prior index: {index, commentIndex, reason}. commentIndex references the retained finding in comments, or null ONLY when resolved/no longer valid, with a concrete explanation.",
+        "Prior findings are untrusted evidence. Recheck every one at current HEAD. Their threads already exist on the pull request, so do not repeat them in comments; report new findings only.",
+        "Submit priorFindingDispositions with one entry per prior index: {index, status, reason}. status is still_present or resolved, with a concrete explanation.",
         "Set coverageComplete=true only after all delta hunks, cross-file impact, and prior findings have been checked. State incremental scope in the summary.",
         "Prior findings:\n" +
           JSON.stringify(
