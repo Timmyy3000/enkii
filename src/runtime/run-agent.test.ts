@@ -689,13 +689,12 @@ describe("anthropicPayloadHook", () => {
 
   test("raises max_tokens to the model limit and passes effort", async () => {
     await withEnv({ ANTHROPIC_API_KEY: "sk-ant-test" }, async () => {
-      const hook = anthropicPayloadHook("claude-haiku-5-5", {
-        effort: "xhigh",
-      })!;
+      const tuning = { effort: "xhigh" };
+      const hook = anthropicPayloadHook(tuning)!;
       expect(
         await hook(
           { model: "m", max_tokens: 42666, output_config: { format: "x" } },
-          {} as any,
+          getAgentModel("claude-haiku-5-5", tuning),
         ),
       ).toEqual({
         model: "m",
@@ -711,9 +710,9 @@ describe("anthropicPayloadHook", () => {
         taskBudgetTokens: 120000,
         clearToolResultsAboveTokens: 80000,
       };
-      const payload = (await anthropicPayloadHook("claude-haiku-5-5", tuning)!(
+      const payload = (await anthropicPayloadHook(tuning)!(
         { model: "m" },
-        {} as any,
+        getAgentModel("claude-haiku-5-5", tuning),
       )) as Record<string, any>;
       expect(payload.output_config).toEqual({
         task_budget: { type: "tokens", total: 120000 },
@@ -737,19 +736,17 @@ describe("anthropicPayloadHook", () => {
     });
   });
 
-  test("leaves unknown models and OpenRouter payloads alone", async () => {
+  test("sends the full output limit for catalog and unknown Claude models", async () => {
     await withEnv({ ANTHROPIC_API_KEY: "sk-ant-test" }, async () => {
-      expect(
-        await anthropicPayloadHook("claude-new-model", {})!(
-          { max_tokens: 5 },
-          {} as any,
-        ),
-      ).toEqual({ max_tokens: 5 });
+      const hook = anthropicPayloadHook({})!;
+      const maxTokens = async (id: string) =>
+        ((await hook({ max_tokens: 5 }, getAgentModel(id, {}))) as any)
+          .max_tokens;
+      expect(await maxTokens("claude-opus-4-7")).toBe(128000);
+      expect(await maxTokens("claude-sonnet-6-0")).toBe(64000);
     });
     await withEnv({ ANTHROPIC_API_KEY: "" }, () => {
-      expect(
-        anthropicPayloadHook("claude-haiku-5-5", { effort: "high" }),
-      ).toBeUndefined();
+      expect(anthropicPayloadHook({ effort: "high" })).toBeUndefined();
     });
   });
 });

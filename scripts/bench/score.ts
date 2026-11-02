@@ -109,7 +109,11 @@ for (const label of labels) {
     const diagnostics = JSON.parse(
       await readFile(join(dir, run, "diagnostics.json"), "utf8"),
     );
-    const spec = claudeModelSpec(result.model)!;
+    const spec = claudeModelSpec(result.model);
+    if (!spec)
+      throw new Error(
+        `bench: ${label}/${run} used ${result.model}, which has no prices in src/runtime/claude-models.ts`,
+      );
     const turns = diagnostics.events.filter(
       (e: any) => e.phase === "turn" && e.usage,
     );

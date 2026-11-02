@@ -113,6 +113,9 @@ export function anthropicTuningFromEnv(): AnthropicRequestTuning {
   };
 }
 
+// Every current Claude model accepts at least this many output tokens.
+const UNKNOWN_CLAUDE_MAX_OUTPUT = 64_000;
+
 const OAUTH_BETAS = ["claude-code-20250219", "oauth-2025-04-20"];
 
 function anthropicBetas(tuning: AnthropicRequestTuning): string[] {
@@ -126,10 +129,15 @@ function getAnthropicModel(
   modelId: string,
   tuning: AnthropicRequestTuning,
 ): Model<any> {
-  const base =
-    getModels("anthropic").find((model) => model.id === modelId) ??
-    getModel("anthropic", "claude-opus-4-7");
+  const known = getModels("anthropic").find((model) => model.id === modelId);
+  const base = known ?? getModel("anthropic", "claude-opus-4-7");
   const spec = claudeModelSpec(modelId);
+  const maxTokens =
+    spec?.maxOutputTokens ?? known?.maxTokens ?? UNKNOWN_CLAUDE_MAX_OUTPUT;
+  if (!spec && !known)
+    console.warn(
+      `enkii: ${modelId} has no known output limit or prices; using ${UNKNOWN_CLAUDE_MAX_OUTPUT} output tokens, and diagnostics costs are estimates.`,
+    );
   const features = anthropicBetas(tuning);
   const oauth = process.env.ANTHROPIC_API_KEY?.includes("sk-ant-oat");
   const betas =
@@ -142,9 +150,8 @@ function getAnthropicModel(
     id: modelId,
     name: modelId,
     reasoning: false,
-    ...(spec
-      ? { maxTokens: spec.maxOutputTokens, contextWindow: spec.contextWindow }
-      : {}),
+    maxTokens,
+    ...(spec ? { contextWindow: spec.contextWindow } : {}),
     // model.headers replaces pi-ai's own anthropic-beta list.
     ...(betas.length ? { headers: { "anthropic-beta": betas.join(",") } } : {}),
   };
@@ -160,12 +167,10 @@ export function getAgentModel(
 }
 
 export function anthropicPayloadHook(
-  modelId: string,
   tuning: AnthropicRequestTuning,
 ): AgentOptions["onPayload"] {
   if (!process.env.ANTHROPIC_API_KEY?.trim()) return undefined;
-  const spec = claudeModelSpec(modelId);
-  return (payload) => {
+  return (payload, model) => {
     const params = payload as {
       max_tokens?: number;
       output_config?: Record<string, unknown>;
@@ -181,7 +186,8 @@ export function anthropicPayloadHook(
     return {
       ...params,
       // A hard per-response cap the model cannot see. Pacing is task_budget's job.
-      ...(spec ? { max_tokens: spec.maxOutputTokens } : {}),
+      // pi-ai would send a third of it.
+      ...(model?.maxTokens ? { max_tokens: model.maxTokens } : {}),
       ...(Object.keys(outputConfig).length
         ? { output_config: outputConfig }
         : {}),
@@ -384,7 +390,7 @@ async function runAgentAttempt<T>(
     options.createAgent ??
     ((args: ConstructorParameters<typeof Agent>[0]) => new Agent(args));
   const agent = createAgent({
-    onPayload: anthropicPayloadHook(options.model, tuning),
+    onPayload: anthropicPayloadHook(tuning),
     initialState: {
       systemPrompt: options.systemPrompt,
       model: getAgentModel(options.model, tuning),
