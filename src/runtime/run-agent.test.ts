@@ -6,7 +6,7 @@ import {
   runAgent,
   agentTimeoutMs,
   getAgentModel,
-  anthropicEffortHook,
+  anthropicPayloadHook,
 } from "./run-agent";
 
 describe("runAgent", () => {
@@ -375,6 +375,81 @@ describe("runAgent", () => {
     );
   });
 
+  test("a reply cut off at the output limit is repaired at low effort and priced per request", async () => {
+    const previous = [process.env.ANTHROPIC_API_KEY, process.env.ENKII_EFFORT];
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    process.env.ENKII_EFFORT = "xhigh";
+    const prompts: string[] = [];
+    const efforts: unknown[] = [];
+    let submitted: Static<typeof SubmitCandidatesParameters> | undefined;
+    try {
+      const result = await runAgent<Static<typeof SubmitCandidatesParameters>>({
+        systemPrompt: "system",
+        userPrompt: "Review, then call submit_review.",
+        model: "claude-haiku-5-5",
+        outputToolName: "submit_review",
+        getOutput: () => submitted,
+        transientRetries: 0,
+        missingOutputRetries: 1,
+        tools: [createSubmitCandidatesTool((args) => void (submitted = args))],
+        createAgent: (args) => {
+          let subscriber: ((event: any, signal: AbortSignal) => void) | undefined;
+          const tools = args!.initialState!.tools!;
+          const turn = async (stopReason: string, output: number) => {
+            const payload = (await args!.onPayload!({}, {} as any)) as any;
+            efforts.push(payload.output_config?.effort);
+            subscriber?.({ type: "turn_start" }, new AbortController().signal);
+            subscriber?.(
+              {
+                type: "message_end",
+                message: {
+                  role: "assistant",
+                  stopReason,
+                  usage: {
+                    input: 0,
+                    output,
+                    cacheRead: 120_000,
+                    cacheWrite: 0,
+                    totalTokens: 120_000 + output,
+                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+                  },
+                },
+              },
+              new AbortController().signal,
+            );
+          };
+          return {
+            subscribe(callback) {
+              subscriber = callback;
+              return () => {};
+            },
+            async prompt(prompt) {
+              prompts.push(String(prompt));
+              if (prompts.length === 1) return turn("length", 128_000);
+              await turn("toolUse", 2_000);
+              await tools.find((tool) => tool.name === "submit_review")!.execute("call-1", {
+                version: 1,
+                meta: { repo: "o/r", prNumber: 1, headSha: "abc", baseRef: "main", generatedAt: "2026-11-02T00:00:00.000Z" },
+                comments: [],
+                reviewSummary: { body: "Clean." },
+              });
+            },
+            abort() {},
+          };
+        },
+      });
+      expect(efforts).toEqual(["xhigh", "low"]);
+      expect(prompts[1]).toContain("reached the output limit");
+      expect(result.usage.cost.total).toBeCloseTo(0.32 + 0.005 + 0.012, 8);
+    } finally {
+      const [key, effort] = previous;
+      if (key === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = key;
+      if (effort === undefined) delete process.env.ENKII_EFFORT;
+      else process.env.ENKII_EFFORT = effort;
+    }
+  });
+
   test("fails after missing-output retries are exhausted", async () => {
     let submitted: unknown;
 
@@ -570,32 +645,74 @@ describe("getAgentModel", () => {
   });
 });
 
-describe("anthropicEffortHook", () => {
-  test("adds effort to Anthropic payloads only when configured", async () => {
-    const previous = [process.env.ANTHROPIC_API_KEY, process.env.ENKII_EFFORT];
+describe("anthropicPayloadHook", () => {
+  const withEnv = async (
+    env: Record<string, string | undefined>,
+    run: () => Promise<void> | void,
+  ) => {
+    const previous = Object.fromEntries(
+      Object.keys(env).map((key) => [key, process.env[key]]),
+    );
     try {
-      process.env.ANTHROPIC_API_KEY = "sk-ant-test";
-      process.env.ENKII_EFFORT = "xhigh";
-      const hook = anthropicEffortHook()!;
+      for (const [key, value] of Object.entries(env))
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      await run();
+    } finally {
+      for (const [key, value] of Object.entries(previous))
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+    }
+  };
+
+  test("raises max_tokens to the model limit and passes effort", async () => {
+    await withEnv({ ANTHROPIC_API_KEY: "sk-ant-test" }, async () => {
+      const hook = anthropicPayloadHook("claude-haiku-5-5", { effort: "xhigh" })!;
       expect(
-        await hook({ model: "m", output_config: { format: "x" } }, {} as any),
+        await hook(
+          { model: "m", max_tokens: 42666, output_config: { format: "x" } },
+          {} as any,
+        ),
       ).toEqual({
         model: "m",
+        max_tokens: 128000,
         output_config: { format: "x", effort: "xhigh" },
       });
+    });
+  });
 
-      process.env.ENKII_EFFORT = "";
-      expect(anthropicEffortHook()).toBeUndefined();
+  test("adds a task budget and tool-result clearing when configured", async () => {
+    await withEnv({ ANTHROPIC_API_KEY: "sk-ant-test" }, async () => {
+      const tuning = {
+        taskBudgetTokens: 120000,
+        clearToolResultsAboveTokens: 80000,
+      };
+      const payload = (await anthropicPayloadHook("claude-haiku-5-5", tuning)!(
+        { model: "m" },
+        {} as any,
+      )) as Record<string, any>;
+      expect(payload.output_config).toEqual({
+        task_budget: { type: "tokens", total: 120000 },
+      });
+      expect(payload.context_management.edits[0].trigger).toEqual({
+        type: "input_tokens",
+        value: 80000,
+      });
+      expect(getAgentModel("claude-haiku-5-5", tuning).headers).toEqual({
+        "anthropic-beta":
+          "task-budgets-2026-03-13,context-management-2025-06-27",
+      });
+    });
+  });
 
-      process.env.ENKII_EFFORT = "xhigh";
-      process.env.ANTHROPIC_API_KEY = "";
-      expect(anthropicEffortHook()).toBeUndefined();
-    } finally {
-      const [key, effort] = previous;
-      if (key === undefined) delete process.env.ANTHROPIC_API_KEY;
-      else process.env.ANTHROPIC_API_KEY = key;
-      if (effort === undefined) delete process.env.ENKII_EFFORT;
-      else process.env.ENKII_EFFORT = effort;
-    }
+  test("leaves unknown models and OpenRouter payloads alone", async () => {
+    await withEnv({ ANTHROPIC_API_KEY: "sk-ant-test" }, async () => {
+      expect(
+        await anthropicPayloadHook("claude-new-model", {})!({ max_tokens: 5 }, {} as any),
+      ).toEqual({ max_tokens: 5 });
+    });
+    await withEnv({ ANTHROPIC_API_KEY: "" }, () => {
+      expect(anthropicPayloadHook("claude-haiku-5-5", { effort: "high" })).toBeUndefined();
+    });
   });
 });

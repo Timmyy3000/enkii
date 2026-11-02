@@ -11,6 +11,7 @@ import {
   type Usage,
 } from "@mariozechner/pi-ai";
 import { recordDiagnostic } from "./diagnostics";
+import { claudeModelSpec, priceUsage } from "./claude-models";
 
 type AgentLike = {
   subscribe: Agent["subscribe"];
@@ -81,28 +82,117 @@ function getOpenRouterModel(modelId: string): Model<any> {
   };
 }
 
-function getAnthropicModel(modelId: string): Model<any> {
+const TASK_BUDGET_BETA = "task-budgets-2026-03-13";
+const CONTEXT_MANAGEMENT_BETA = "context-management-2025-06-27";
+
+export type AnthropicRequestTuning = {
+  effort?: string;
+  taskBudgetTokens?: number;
+  clearToolResultsAboveTokens?: number;
+};
+
+function positiveIntegerEnv(name: string): number | undefined {
+  const raw = process.env[name]?.trim();
+  if (!raw) return undefined;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0)
+    throw new Error(`enkii: ${name} must be a whole number of tokens.`);
+  return value > 0 ? value : undefined;
+}
+
+export function anthropicTuningFromEnv(): AnthropicRequestTuning {
+  return {
+    effort: process.env.ENKII_EFFORT?.trim() || undefined,
+    taskBudgetTokens: positiveIntegerEnv("ENKII_TASK_BUDGET_TOKENS"),
+    clearToolResultsAboveTokens: positiveIntegerEnv(
+      "ENKII_CLEAR_TOOL_RESULTS_ABOVE_TOKENS",
+    ),
+  };
+}
+
+function anthropicBetas(tuning: AnthropicRequestTuning): string[] {
+  return [
+    ...(tuning.taskBudgetTokens ? [TASK_BUDGET_BETA] : []),
+    ...(tuning.clearToolResultsAboveTokens ? [CONTEXT_MANAGEMENT_BETA] : []),
+  ];
+}
+
+function getAnthropicModel(
+  modelId: string,
+  tuning: AnthropicRequestTuning,
+): Model<any> {
   const base =
     getModels("anthropic").find((model) => model.id === modelId) ??
     getModel("anthropic", "claude-opus-4-7");
+  const spec = claudeModelSpec(modelId);
+  const betas = anthropicBetas(tuning);
   // pi-ai predates Claude 5 and sends thinking: {type: "disabled"} for
   // reasoning models, which Claude 5 rejects. reasoning: false omits the
   // thinking param so each model uses its own default.
-  return { ...base, id: modelId, name: modelId, reasoning: false };
+  return {
+    ...base,
+    id: modelId,
+    name: modelId,
+    reasoning: false,
+    ...(spec
+      ? { maxTokens: spec.maxOutputTokens, contextWindow: spec.contextWindow }
+      : {}),
+    // model.headers replaces pi-ai's own anthropic-beta list.
+    ...(betas.length ? { headers: { "anthropic-beta": betas.join(",") } } : {}),
+  };
 }
 
-export function getAgentModel(modelId: string): Model<any> {
+export function getAgentModel(
+  modelId: string,
+  tuning: AnthropicRequestTuning = anthropicTuningFromEnv(),
+): Model<any> {
   return process.env.ANTHROPIC_API_KEY?.trim()
-    ? getAnthropicModel(modelId)
+    ? getAnthropicModel(modelId, tuning)
     : getOpenRouterModel(modelId);
 }
 
-export function anthropicEffortHook(): AgentOptions["onPayload"] {
-  const effort = process.env.ENKII_EFFORT?.trim();
-  if (!effort || !process.env.ANTHROPIC_API_KEY?.trim()) return undefined;
+export function anthropicPayloadHook(
+  modelId: string,
+  tuning: AnthropicRequestTuning,
+): AgentOptions["onPayload"] {
+  if (!process.env.ANTHROPIC_API_KEY?.trim()) return undefined;
+  const spec = claudeModelSpec(modelId);
   return (payload) => {
-    const params = payload as { output_config?: Record<string, unknown> };
-    return { ...params, output_config: { ...params.output_config, effort } };
+    const params = payload as {
+      max_tokens?: number;
+      output_config?: Record<string, unknown>;
+      context_management?: unknown;
+    };
+    const outputConfig = {
+      ...params.output_config,
+      ...(tuning.effort ? { effort: tuning.effort } : {}),
+      ...(tuning.taskBudgetTokens
+        ? { task_budget: { type: "tokens", total: tuning.taskBudgetTokens } }
+        : {}),
+    };
+    return {
+      ...params,
+      // A hard per-response cap the model cannot see. Pacing is task_budget's job.
+      ...(spec ? { max_tokens: spec.maxOutputTokens } : {}),
+      ...(Object.keys(outputConfig).length ? { output_config: outputConfig } : {}),
+      ...(tuning.clearToolResultsAboveTokens
+        ? {
+            context_management: {
+              edits: [
+                {
+                  type: "clear_tool_uses_20250919",
+                  trigger: {
+                    type: "input_tokens",
+                    value: tuning.clearToolResultsAboveTokens,
+                  },
+                  keep: { type: "tool_uses", value: 4 },
+                  clear_at_least: { type: "input_tokens", value: 10_000 },
+                },
+              ],
+            },
+          }
+        : {}),
+    };
   };
 }
 
@@ -178,9 +268,10 @@ function isTransientProviderError(errorMessage?: string): boolean {
 function buildMissingOutputRetryPrompt(
   outputToolName: string,
   attempt: number,
+  truncated = false,
 ): string {
   return `<retry_notice>
-Previous attempt ${attempt} ended without calling \`${outputToolName}\`.
+Previous attempt ${attempt} ended without calling \`${outputToolName}\`${truncated ? " because the reply reached the output limit. Keep reasoning brief this time" : ""}.
 Use the evidence already gathered in this session; do not restart the review.
 Call \`${outputToolName}\` exactly once now with the final structured output.
 If coverage is incomplete, report it explicitly. Do not answer with prose.
@@ -269,6 +360,11 @@ async function runAgentAttempt<T>(
   let modelDurationMs = 0;
   let modelStart: number | undefined;
   let turnCount = 0;
+  let lastStopReason: string | undefined;
+  const tuning = anthropicTuningFromEnv();
+  const pricing = process.env.ANTHROPIC_API_KEY?.trim()
+    ? claudeModelSpec(options.model)
+    : undefined;
   const toolStarts = new Map<string, number>();
   const pendingSubmissions = new Map<string, unknown>();
   const usage = emptyUsage();
@@ -278,10 +374,10 @@ async function runAgentAttempt<T>(
     options.createAgent ??
     ((args: ConstructorParameters<typeof Agent>[0]) => new Agent(args));
   const agent = createAgent({
-    onPayload: anthropicEffortHook(),
+    onPayload: anthropicPayloadHook(options.model, tuning),
     initialState: {
       systemPrompt: options.systemPrompt,
-      model: getAgentModel(options.model),
+      model: getAgentModel(options.model, tuning),
       thinkingLevel: "off",
       tools: options.tools.map((tool) =>
         tool.name !== options.outputToolName
@@ -392,6 +488,9 @@ async function runAgentAttempt<T>(
       if (turnMs !== undefined) modelDurationMs += turnMs;
       modelStart = undefined;
       turnCount++;
+      lastStopReason = event.message.stopReason;
+      if (pricing)
+        event.message.usage.cost = priceUsage(pricing, event.message.usage);
       recordDiagnostic({
         kind: options.logPrefix,
         phase: "turn",
@@ -432,10 +531,17 @@ async function runAgentAttempt<T>(
         `enkii${prefix}: repairing missing ${options.outputToolName} in the existing session (${repair})`,
       );
       repairCount++;
+      const truncated = lastStopReason === "length";
+      // Thinking fills the same output cap; a second deep pass would hit it again.
+      if (truncated) tuning.effort = "low";
       await agent.prompt(
         submissionError
           ? `Correct the rejected ${options.outputToolName} submission in this session: ${submissionError}. Reuse gathered evidence and resubmit once.`
-          : buildMissingOutputRetryPrompt(options.outputToolName, repair),
+          : buildMissingOutputRetryPrompt(
+              options.outputToolName,
+              repair,
+              truncated,
+            ),
       );
     }
   } catch (error) {
