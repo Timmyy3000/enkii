@@ -563,7 +563,10 @@ describe("runAgent", () => {
     expect(prompts).toBe(1);
   });
 
-  test("repairs and transient retries retain accumulated usage", async () => {
+  test.each([
+    "connection reset",
+    '{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}',
+  ])("repairs and a transient retry after %s retain accumulated usage", async (transientError) => {
     let sessions = 0;
     let submitted: string | undefined;
     let prompts = 0;
@@ -590,7 +593,7 @@ describe("runAgent", () => {
               type: "message_end",
               message: {
                 role: "assistant",
-                errorMessage: prompts === 1 ? "connection reset" : undefined,
+                errorMessage: prompts === 1 ? transientError : undefined,
                 usage: {
                   input: 10,
                   output: 2,

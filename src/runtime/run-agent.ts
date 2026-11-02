@@ -263,7 +263,7 @@ function parseEnvMissingOutputRetries(): number {
 
 function isTransientProviderError(errorMessage?: string): boolean {
   if (!errorMessage) return false;
-  return /network connection lost|request was aborted|timed out|timeout|connection reset|econnreset|etimedout|temporarily unavailable/i.test(
+  return /network connection lost|request was aborted|timed out|timeout|connection reset|econnreset|etimedout|temporarily unavailable|overloaded/i.test(
     errorMessage,
   );
 }
