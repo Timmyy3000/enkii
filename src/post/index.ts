@@ -336,9 +336,14 @@ function buildSummaryBody(args: {
   if (summary) {
     parts.push("### Summary");
     parts.push(summary.trim());
-  } else if (totalApproved === 0) {
+  } else if (open.length === 0) {
     parts.push("### Summary");
     parts.push("Reviewed this PR and found no issues to flag.");
+  } else if (totalApproved === 0) {
+    parts.push("### Summary");
+    parts.push(
+      `Found no new issues. ${stillOpen.length} earlier findings are still open.`,
+    );
   } else {
     parts.push("### Summary");
     parts.push(`Reviewed this PR and posted ${totalApproved} comments.`);

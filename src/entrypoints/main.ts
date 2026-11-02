@@ -50,6 +50,7 @@ import {
 import { postHelpReply } from "../post/help";
 import {
   recordPosted,
+  serialized,
   withoutPostedDuplicates,
   type PostedAnchor,
 } from "../post/dedupe";
@@ -698,57 +699,61 @@ async function run(): Promise<void> {
         `(validator ${enableValidator ? "on" : "off"})`,
     );
     const restOctokit = octokit.rest;
-    const settled = await settleReviewLanes(lanes, async (result) => {
-      const startedAt = Date.now();
-      try {
-        const prior = priorFindings.get(result.kind) ?? [];
-        const carriedFindings = (
-          result.candidates.priorFindingDispositions ?? []
-        )
-          .filter((d) => d.status === "still_present")
-          .flatMap((d) => (prior[d.index] ? [prior[d.index]!] : []));
-        const validated = withoutPostedDuplicates(
-          result.validated,
-          result.kind,
-          postedAnchors,
-        );
-        const post = await postReviewFromValidated({
-          validated,
-          carriedFindings,
-          octokit: restOctokit,
-          owner,
-          repo,
-          prNumber: context.entityNumber,
-          marker: markerForKind(result.kind),
-          inlineCap: 20,
-          checkpoint: checkpoints.get(result.kind),
-        });
-        recordPosted(validated, result.kind, postedAnchors);
-        console.log(
-          `enkii: posted ${result.kind} review #${post.reviewId} immediately after lane completion`,
-        );
-        core.setOutput(`${result.kind}_review_id`, String(post.reviewId));
-        recordDiagnostic({
-          kind: result.kind,
-          phase: "post",
-          status: "completed",
-          durationMs: Date.now() - startedAt,
-          coverage: result.validated.coverageComplete
-            ? "complete"
-            : "incomplete",
-        });
-        return post;
-      } catch (error) {
-        recordDiagnostic({
-          kind: result.kind,
-          phase: "post",
-          status: "failed",
-          durationMs: Date.now() - startedAt,
-          error: getErrorMessage(error),
-        });
-        throw error;
-      }
-    });
+    // Lanes finish concurrently; one at a time keeps dedupe's view of posted anchors current.
+    const settled = await settleReviewLanes(
+      lanes,
+      serialized(async (result: RunReviewResult) => {
+        const startedAt = Date.now();
+        try {
+          const prior = priorFindings.get(result.kind) ?? [];
+          const carriedFindings = (
+            result.candidates.priorFindingDispositions ?? []
+          )
+            .filter((d) => d.status === "still_present")
+            .flatMap((d) => (prior[d.index] ? [prior[d.index]!] : []));
+          const validated = withoutPostedDuplicates(
+            result.validated,
+            result.kind,
+            postedAnchors,
+          );
+          const post = await postReviewFromValidated({
+            validated,
+            carriedFindings,
+            octokit: restOctokit,
+            owner,
+            repo,
+            prNumber: context.entityNumber,
+            marker: markerForKind(result.kind),
+            inlineCap: 20,
+            checkpoint: checkpoints.get(result.kind),
+          });
+          recordPosted(validated, result.kind, postedAnchors);
+          console.log(
+            `enkii: posted ${result.kind} review #${post.reviewId} immediately after lane completion`,
+          );
+          core.setOutput(`${result.kind}_review_id`, String(post.reviewId));
+          recordDiagnostic({
+            kind: result.kind,
+            phase: "post",
+            status: "completed",
+            durationMs: Date.now() - startedAt,
+            coverage: result.validated.coverageComplete
+              ? "complete"
+              : "incomplete",
+          });
+          return post;
+        } catch (error) {
+          recordDiagnostic({
+            kind: result.kind,
+            phase: "post",
+            status: "failed",
+            durationMs: Date.now() - startedAt,
+            error: getErrorMessage(error),
+          });
+          throw error;
+        }
+      }),
+    );
 
     for (const entry of settled.posted) {
       const { kind, post } = entry;

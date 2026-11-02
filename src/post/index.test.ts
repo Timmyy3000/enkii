@@ -135,6 +135,7 @@ describe("postReviewFromValidated", () => {
     } as unknown as Octokit;
     const validated = makeValidated();
     validated.results = [];
+    validated.reviewSummary = undefined;
     await postReviewFromValidated({
       validated,
       octokit,
@@ -156,6 +157,10 @@ describe("postReviewFromValidated", () => {
     expect(body).toContain("**Mergeability Score:** 1/5");
     expect(body).not.toContain("Safe to merge");
     expect(body).toContain("Still open from earlier reviews (1)");
+    expect(body).toContain(
+      "Found no new issues. 1 earlier findings are still open.",
+    );
+    expect(body).not.toContain("found no issues to flag");
   });
 
   test("checkpoint survives summary fallback with all findings, but never incomplete coverage", async () => {

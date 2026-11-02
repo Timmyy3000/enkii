@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ValidatedPass } from "../runtime/schemas";
 import {
   recordPosted,
+  serialized,
   withoutPostedDuplicates,
   type PostedAnchor,
 } from "./dedupe";
@@ -74,5 +75,26 @@ describe("withoutPostedDuplicates", () => {
     expect(
       kept(withoutPostedDuplicates(pass([["a.ts", 2, "P1"]]), "code", posted)),
     ).toEqual(["[P1] a.ts:2"]);
+  });
+});
+
+describe("serialized", () => {
+  test("runs overlapping calls one after another and survives a failure", async () => {
+    const events: string[] = [];
+    const post = serialized(async (kind: string) => {
+      events.push(`start ${kind}`);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      events.push(`end ${kind}`);
+      if (kind === "code") throw new Error("post failed");
+      return kind;
+    });
+    const results = await Promise.allSettled([post("code"), post("security")]);
+    expect(events).toEqual([
+      "start code",
+      "end code",
+      "start security",
+      "end security",
+    ]);
+    expect(results.map((r) => r.status)).toEqual(["rejected", "fulfilled"]);
   });
 });

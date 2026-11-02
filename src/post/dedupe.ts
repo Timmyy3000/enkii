@@ -52,3 +52,15 @@ export function recordPosted(
         rank: rank(result.comment),
       });
 }
+
+/** Runs calls one at a time, in call order. A rejected call does not block later ones. */
+export function serialized<A, R>(
+  fn: (arg: A) => Promise<R>,
+): (arg: A) => Promise<R> {
+  let tail: Promise<unknown> = Promise.resolve();
+  return (arg) => {
+    const run = tail.then(() => fn(arg));
+    tail = run.catch(() => undefined);
+    return run;
+  };
+}
