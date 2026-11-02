@@ -32,6 +32,8 @@ export type BenchCase = {
   pr: number;
   head: string;
   baseRef: string;
+  /** Base commit recorded on the pull request. Survives the PR merging into its base. */
+  base?: string;
   title: string;
   body: string;
 };
@@ -61,12 +63,13 @@ if (!existsSync(mirror)) {
   execFileSync("gh", ["repo", "clone", benchCase.repo, mirror, "--", "--no-checkout", "-q"], { stdio: "inherit" });
 }
 try {
-  git(mirror, ["cat-file", "-e", `${benchCase.head}^{commit}`]);
+  for (const sha of [benchCase.head, benchCase.base].filter(Boolean)) git(mirror, ["cat-file", "-e", `${sha}^{commit}`]);
 } catch {
-  git(mirror, ["fetch", "-q", "origin", benchCase.head, `+refs/heads/${benchCase.baseRef}:refs/remotes/origin/${benchCase.baseRef}`]);
+  git(mirror, ["fetch", "-q", "origin", benchCase.head, ...(benchCase.base ? [benchCase.base] : []), `+refs/heads/${benchCase.baseRef}:refs/remotes/origin/${benchCase.baseRef}`]);
 }
 if (!existsSync(workspace)) git(mirror, ["worktree", "add", "-q", "--detach", workspace, benchCase.head]);
-const base = git(mirror, ["merge-base", benchCase.head, `origin/${benchCase.baseRef}`]);
+const base = git(mirror, ["merge-base", benchCase.head, benchCase.base ?? `origin/${benchCase.baseRef}`]);
+if (base === benchCase.head) throw new Error(`bench: ${benchCase.id} head is already in its base; the diff would be empty`);
 
 const diffPath = join(promptsDir, "pr.diff");
 await writeFile(diffPath, git(workspace, ["diff", "--no-ext-diff", base, benchCase.head]) + "\n");
