@@ -393,7 +393,9 @@ describe("runAgent", () => {
         missingOutputRetries: 1,
         tools: [createSubmitCandidatesTool((args) => void (submitted = args))],
         createAgent: (args) => {
-          let subscriber: ((event: any, signal: AbortSignal) => void) | undefined;
+          let subscriber:
+            | ((event: any, signal: AbortSignal) => void)
+            | undefined;
           const tools = args!.initialState!.tools!;
           const turn = async (stopReason: string, output: number) => {
             const payload = (await args!.onPayload!({}, {} as any)) as any;
@@ -411,7 +413,13 @@ describe("runAgent", () => {
                     cacheRead: 120_000,
                     cacheWrite: 0,
                     totalTokens: 120_000 + output,
-                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+                    cost: {
+                      input: 0,
+                      output: 0,
+                      cacheRead: 0,
+                      cacheWrite: 0,
+                      total: 0,
+                    },
                   },
                 },
               },
@@ -427,12 +435,20 @@ describe("runAgent", () => {
               prompts.push(String(prompt));
               if (prompts.length === 1) return turn("length", 128_000);
               await turn("toolUse", 2_000);
-              await tools.find((tool) => tool.name === "submit_review")!.execute("call-1", {
-                version: 1,
-                meta: { repo: "o/r", prNumber: 1, headSha: "abc", baseRef: "main", generatedAt: "2026-11-02T00:00:00.000Z" },
-                comments: [],
-                reviewSummary: { body: "Clean." },
-              });
+              await tools
+                .find((tool) => tool.name === "submit_review")!
+                .execute("call-1", {
+                  version: 1,
+                  meta: {
+                    repo: "o/r",
+                    prNumber: 1,
+                    headSha: "abc",
+                    baseRef: "main",
+                    generatedAt: "2026-11-02T00:00:00.000Z",
+                  },
+                  comments: [],
+                  reviewSummary: { body: "Clean." },
+                });
             },
             abort() {},
           };
@@ -566,61 +582,64 @@ describe("runAgent", () => {
   test.each([
     "connection reset",
     '{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}',
-  ])("repairs and a transient retry after %s retain accumulated usage", async (transientError) => {
-    let sessions = 0;
-    let submitted: string | undefined;
-    let prompts = 0;
-    const result = await runAgent({
-      systemPrompt: "system",
-      userPrompt: "review",
-      model: "deepseek/deepseek-v4-pro",
-      tools: [],
-      outputToolName: "submit_review",
-      getOutput: () => submitted,
-      transientRetries: 1,
-      missingOutputRetries: 1,
-      createAgent: () => {
-        sessions++;
-        let subscriber: any;
-        return {
-          subscribe(callback) {
-            subscriber = callback;
-            return () => {};
-          },
-          async prompt() {
-            prompts++;
-            subscriber({
-              type: "message_end",
-              message: {
-                role: "assistant",
-                errorMessage: prompts === 1 ? transientError : undefined,
-                usage: {
-                  input: 10,
-                  output: 2,
-                  cacheRead: 0,
-                  cacheWrite: 0,
-                  totalTokens: 12,
-                  cost: {
-                    input: 1,
-                    output: 1,
+  ])(
+    "repairs and a transient retry after %s retain accumulated usage",
+    async (transientError) => {
+      let sessions = 0;
+      let submitted: string | undefined;
+      let prompts = 0;
+      const result = await runAgent({
+        systemPrompt: "system",
+        userPrompt: "review",
+        model: "deepseek/deepseek-v4-pro",
+        tools: [],
+        outputToolName: "submit_review",
+        getOutput: () => submitted,
+        transientRetries: 1,
+        missingOutputRetries: 1,
+        createAgent: () => {
+          sessions++;
+          let subscriber: any;
+          return {
+            subscribe(callback) {
+              subscriber = callback;
+              return () => {};
+            },
+            async prompt() {
+              prompts++;
+              subscriber({
+                type: "message_end",
+                message: {
+                  role: "assistant",
+                  errorMessage: prompts === 1 ? transientError : undefined,
+                  usage: {
+                    input: 10,
+                    output: 2,
                     cacheRead: 0,
                     cacheWrite: 0,
-                    total: 2,
+                    totalTokens: 12,
+                    cost: {
+                      input: 1,
+                      output: 1,
+                      cacheRead: 0,
+                      cacheWrite: 0,
+                      total: 2,
+                    },
                   },
                 },
-              },
-            });
-            if (prompts === 3) submitted = "done";
-          },
-          abort() {},
-        };
-      },
-    });
-    expect(sessions).toBe(2);
-    expect(prompts).toBe(3);
-    expect(result.usage.totalTokens).toBe(36);
-    expect(result.usage.cost.total).toBe(6);
-  });
+              });
+              if (prompts === 3) submitted = "done";
+            },
+            abort() {},
+          };
+        },
+      });
+      expect(sessions).toBe(2);
+      expect(prompts).toBe(3);
+      expect(result.usage.totalTokens).toBe(36);
+      expect(result.usage.cost.total).toBe(6);
+    },
+  );
 });
 
 describe("getAgentModel", () => {
@@ -670,7 +689,9 @@ describe("anthropicPayloadHook", () => {
 
   test("raises max_tokens to the model limit and passes effort", async () => {
     await withEnv({ ANTHROPIC_API_KEY: "sk-ant-test" }, async () => {
-      const hook = anthropicPayloadHook("claude-haiku-5-5", { effort: "xhigh" })!;
+      const hook = anthropicPayloadHook("claude-haiku-5-5", {
+        effort: "xhigh",
+      })!;
       expect(
         await hook(
           { model: "m", max_tokens: 42666, output_config: { format: "x" } },
@@ -719,11 +740,16 @@ describe("anthropicPayloadHook", () => {
   test("leaves unknown models and OpenRouter payloads alone", async () => {
     await withEnv({ ANTHROPIC_API_KEY: "sk-ant-test" }, async () => {
       expect(
-        await anthropicPayloadHook("claude-new-model", {})!({ max_tokens: 5 }, {} as any),
+        await anthropicPayloadHook("claude-new-model", {})!(
+          { max_tokens: 5 },
+          {} as any,
+        ),
       ).toEqual({ max_tokens: 5 });
     });
     await withEnv({ ANTHROPIC_API_KEY: "" }, () => {
-      expect(anthropicPayloadHook("claude-haiku-5-5", { effort: "high" })).toBeUndefined();
+      expect(
+        anthropicPayloadHook("claude-haiku-5-5", { effort: "high" }),
+      ).toBeUndefined();
     });
   });
 });

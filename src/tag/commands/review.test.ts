@@ -104,7 +104,11 @@ describe("incremental review orchestration", () => {
     normalizePriorFindings(submission, 2);
     expect(submission.priorFindingDispositions).toEqual([
       { index: 0, status: "resolved", reason: "Fixed at HEAD" },
-      { index: 1, status: "still_present", reason: "not rechecked by the reviewer" },
+      {
+        index: 1,
+        status: "still_present",
+        reason: "not rechecked by the reviewer",
+      },
     ]);
     expect(() => assertPriorFindingsRechecked(submission, 2)).not.toThrow();
   });
@@ -228,7 +232,11 @@ describe("incremental review orchestration", () => {
       priorFindingDispositions: [],
     });
     expect(result.result.candidates.priorFindingDispositions).toEqual([
-      { index: 0, status: "still_present", reason: "not rechecked by the reviewer" },
+      {
+        index: 0,
+        status: "still_present",
+        reason: "not rechecked by the reviewer",
+      },
     ]);
     expect(result.result.candidates.coverageComplete).toBe(false);
   });

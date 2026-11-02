@@ -71,7 +71,10 @@ describe("postReviewFromValidated", () => {
     const calls: any[] = [];
     const octokit = {
       paginate: async () => [
-        { filename: "src/service.ts", patch: "@@ -10,2 +10,3 @@\n context\n+added\n context" },
+        {
+          filename: "src/service.ts",
+          patch: "@@ -10,2 +10,3 @@\n context\n+added\n context",
+        },
       ],
       rest: {
         pulls: {
@@ -141,7 +144,12 @@ describe("postReviewFromValidated", () => {
       marker: ENKII_REVIEW_MARKER,
       inlineCap: 20,
       carriedFindings: [
-        { path: "src/a.ts", line: 3, side: "RIGHT", body: "[P0] Token leaks to logs" },
+        {
+          path: "src/a.ts",
+          line: 3,
+          side: "RIGHT",
+          body: "[P0] Token leaks to logs",
+        },
       ],
     });
     const body: string = calls.at(-1).body;

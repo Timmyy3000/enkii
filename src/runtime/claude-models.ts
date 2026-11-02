@@ -69,14 +69,16 @@ export function promptTokens(usage: Usage): number {
 export function priceUsage(spec: ClaudeModelSpec, usage: Usage): Usage["cost"] {
   const prompt = promptTokens(usage);
   const card =
-    spec.rates.find((rate) => rate.promptUpTo === undefined || prompt <= rate.promptUpTo) ??
-    spec.rates[spec.rates.length - 1]!;
+    spec.rates.find(
+      (rate) => rate.promptUpTo === undefined || prompt <= rate.promptUpTo,
+    ) ?? spec.rates[spec.rates.length - 1]!;
   const perToken = (rate: number) => rate / 1_000_000;
   const cost = {
     input: usage.input * perToken(card.input),
     output: usage.output * perToken(card.output),
     cacheRead: usage.cacheRead * perToken(card.cacheRead),
-    cacheWrite: usage.cacheWrite * perToken(card.input * CACHE_WRITE_MULTIPLIER),
+    cacheWrite:
+      usage.cacheWrite * perToken(card.input * CACHE_WRITE_MULTIPLIER),
     total: 0,
   };
   cost.total = cost.input + cost.output + cost.cacheRead + cost.cacheWrite;

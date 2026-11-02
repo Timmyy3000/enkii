@@ -8,6 +8,20 @@ All notable changes to enkii will be documented here. Format follows [Keep a Cha
 
 - Confine the review agent's `read`, `grep`, `find`, and `ls` tools to the checkout and review artifact directories, resolving symlinks, and keep them out of `.git`. Previously a prompt-injected PR could ask the agent to read `/proc/self/environ` (which holds the provider API key) or grep `.git/config` (which holds the checkout's GitHub token) and quote the result in a posted review.
 
+### Fixed
+
+- Review lanes on Claude 5 models no longer end with "agent did not call submit_review". enkii borrowed `claude-opus-4-7`'s settings for models pi-ai does not know, which capped every reply at 32,000 output tokens. Haiku 5.5's thinking filled that on a review's last turn. `max_tokens` is now each model's output limit, and a repair after a cut-off reply runs at low effort.
+- Diagnostics report real costs. They used Opus 4.7 prices for every Claude 5 model, about 50x too high for Haiku 5.5. Each request is now priced on its model's rate card, including Haiku 5.5's higher card above a 100K-token prompt.
+- Incremental reviews no longer re-post findings that are still present, including accepted risks. They stay in the checkpoint, count toward the mergeability score and are listed in the summary. Prior-finding dispositions are `still_present` or `resolved` instead of an index into the new comments, which removes a common cause of rejected submissions and of the "Coverage: incomplete" banner.
+- When two lanes flag the same lines, the later lane drops its finding unless it is more severe.
+- An `overloaded_error` from the Anthropic API is retried once.
+
+### Added (benchmarking)
+
+- `task_budget_tokens` and `clear_tool_results_above_tokens` inputs for Anthropic models.
+- Per-turn stop reason and usage in diagnostics.
+- `scripts/bench`: replay a pull request locally without posting and score runs against known findings.
+
 ### Fixed (1.3.2)
 
 - Require `coverageComplete` in every review submission and show it in the output examples. Code reviews that omitted it were reported as "Coverage: incomplete" with a 1/5 mergeability score despite a complete, clean review; a missing value is now rejected and corrected in the same session.

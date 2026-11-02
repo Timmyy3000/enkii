@@ -702,7 +702,9 @@ async function run(): Promise<void> {
       const startedAt = Date.now();
       try {
         const prior = priorFindings.get(result.kind) ?? [];
-        const carriedFindings = (result.candidates.priorFindingDispositions ?? [])
+        const carriedFindings = (
+          result.candidates.priorFindingDispositions ?? []
+        )
           .filter((d) => d.status === "still_present")
           .flatMap((d) => (prior[d.index] ? [prior[d.index]!] : []));
         const validated = withoutPostedDuplicates(

@@ -132,7 +132,8 @@ function getAnthropicModel(
   const spec = claudeModelSpec(modelId);
   const features = anthropicBetas(tuning);
   const oauth = process.env.ANTHROPIC_API_KEY?.includes("sk-ant-oat");
-  const betas = features.length && oauth ? [...OAUTH_BETAS, ...features] : features;
+  const betas =
+    features.length && oauth ? [...OAUTH_BETAS, ...features] : features;
   // pi-ai predates Claude 5 and sends thinking: {type: "disabled"} for
   // reasoning models, which Claude 5 rejects. reasoning: false omits the
   // thinking param so each model uses its own default.
@@ -181,7 +182,9 @@ export function anthropicPayloadHook(
       ...params,
       // A hard per-response cap the model cannot see. Pacing is task_budget's job.
       ...(spec ? { max_tokens: spec.maxOutputTokens } : {}),
-      ...(Object.keys(outputConfig).length ? { output_config: outputConfig } : {}),
+      ...(Object.keys(outputConfig).length
+        ? { output_config: outputConfig }
+        : {}),
       ...(tuning.clearToolResultsAboveTokens
         ? {
             context_management: {
