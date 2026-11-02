@@ -24,6 +24,7 @@ import {
   type RunReviewResult,
 } from "../../src/tag/commands/review";
 import type { PreparedContext } from "../../src/prompts/types";
+import { claimAnchors, type PostedAnchor } from "../../src/post/dedupe";
 
 export type BenchCase = {
   id: string;
@@ -62,7 +63,7 @@ if (!existsSync(mirror)) {
 try {
   git(mirror, ["cat-file", "-e", `${benchCase.head}^{commit}`]);
 } catch {
-  git(mirror, ["fetch", "-q", "origin", `+refs/pull/${benchCase.pr}/head:refs/bench/pr-${benchCase.pr}`, benchCase.baseRef]);
+  git(mirror, ["fetch", "-q", "origin", benchCase.head, `+refs/heads/${benchCase.baseRef}:refs/remotes/origin/${benchCase.baseRef}`]);
 }
 if (!existsSync(workspace)) git(mirror, ["worktree", "add", "-q", "--detach", workspace, benchCase.head]);
 const base = git(mirror, ["merge-base", benchCase.head, `origin/${benchCase.baseRef}`]);
@@ -127,11 +128,13 @@ const lanes: Record<ReviewKind, () => Promise<RunReviewResult>> = {
 
 const kinds = (process.env.BENCH_LANES ?? "code,security,policy").split(",") as ReviewKind[];
 const startedAt = Date.now();
+const postedAnchors: PostedAnchor[] = [];
 const settled = await Promise.all(
   kinds.map(async (kind) => {
     const laneStart = Date.now();
     try {
       const result = await lanes[kind]();
+      result.validated = claimAnchors(result.validated, kind, postedAnchors);
       return {
         kind,
         status: "completed",
