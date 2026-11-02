@@ -116,6 +116,40 @@ describe("postReviewFromValidated", () => {
     ]);
   });
 
+  test("a still-open P0 from an earlier review keeps the verdict at not mergeable", async () => {
+    const calls: any[] = [];
+    const octokit = {
+      paginate: async () => [],
+      rest: {
+        pulls: {
+          listFiles() {},
+          createReview: async (args: any) => {
+            calls.push(args);
+            return { data: { id: 1 } };
+          },
+        },
+      },
+    } as unknown as Octokit;
+    const validated = makeValidated();
+    validated.results = [];
+    await postReviewFromValidated({
+      validated,
+      octokit,
+      owner: "o",
+      repo: "r",
+      prNumber: 294,
+      marker: ENKII_REVIEW_MARKER,
+      inlineCap: 20,
+      carriedFindings: [
+        { path: "src/a.ts", line: 3, side: "RIGHT", body: "[P0] Token leaks to logs" },
+      ],
+    });
+    const body: string = calls.at(-1).body;
+    expect(body).toContain("**Mergeability Score:** 1/5");
+    expect(body).not.toContain("Safe to merge");
+    expect(body).toContain("Still open from earlier reviews (1)");
+  });
+
   test("checkpoint survives summary fallback with all findings, but never incomplete coverage", async () => {
     const checkpoint: ReviewCheckpoint = {
       version: 1,

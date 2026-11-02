@@ -48,7 +48,11 @@ import {
   ENKII_SECURITY_MARKER,
 } from "../post";
 import { postHelpReply } from "../post/help";
-import { claimAnchors, type PostedAnchor } from "../post/dedupe";
+import {
+  recordPosted,
+  withoutPostedDuplicates,
+  type PostedAnchor,
+} from "../post/dedupe";
 import type { Candidate } from "../runtime/schemas";
 import type { PreparedContext } from "../prompts/types";
 import { fetchEnkiiComment } from "../github/operations/comments/fetch-enkii-comment";
@@ -701,8 +705,13 @@ async function run(): Promise<void> {
         const carriedFindings = (result.candidates.priorFindingDispositions ?? [])
           .filter((d) => d.status === "still_present")
           .flatMap((d) => (prior[d.index] ? [prior[d.index]!] : []));
+        const validated = withoutPostedDuplicates(
+          result.validated,
+          result.kind,
+          postedAnchors,
+        );
         const post = await postReviewFromValidated({
-          validated: claimAnchors(result.validated, result.kind, postedAnchors),
+          validated,
           carriedFindings,
           octokit: restOctokit,
           owner,
@@ -712,6 +721,7 @@ async function run(): Promise<void> {
           inlineCap: 20,
           checkpoint: checkpoints.get(result.kind),
         });
+        recordPosted(validated, result.kind, postedAnchors);
         console.log(
           `enkii: posted ${result.kind} review #${post.reviewId} immediately after lane completion`,
         );

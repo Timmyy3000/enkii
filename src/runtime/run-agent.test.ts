@@ -706,6 +706,14 @@ describe("anthropicPayloadHook", () => {
           "task-budgets-2026-03-13,context-management-2025-06-27",
       });
     });
+    await withEnv({ ANTHROPIC_API_KEY: "sk-ant-oat01-test" }, () => {
+      expect(
+        getAgentModel("claude-haiku-5-5", { taskBudgetTokens: 50000 }).headers,
+      ).toEqual({
+        "anthropic-beta":
+          "claude-code-20250219,oauth-2025-04-20,task-budgets-2026-03-13",
+      });
+    });
   });
 
   test("leaves unknown models and OpenRouter payloads alone", async () => {

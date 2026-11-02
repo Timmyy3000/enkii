@@ -142,6 +142,7 @@ export async function postReviewFromValidated(args: {
       summary: validated.reviewSummary?.body,
       approved,
       totalApproved: approved.length,
+      stillOpen: args.carriedFindings ?? [],
       inlinePosted: inline.length,
       spillover,
       unresolved,
@@ -196,6 +197,7 @@ export async function postReviewFromValidated(args: {
           summary: validated.reviewSummary?.body,
           approved,
           totalApproved: approved.length,
+          stillOpen: args.carriedFindings ?? [],
           inlinePosted: 0,
           spillover,
           unresolved: [...unresolved, ...inline],
@@ -301,6 +303,8 @@ function buildSummaryBody(args: {
   summary?: string;
   approved: Candidate[];
   totalApproved: number;
+  /** Earlier findings still present at this head, tracked in their existing threads. */
+  stillOpen?: Candidate[];
   inlinePosted: number;
   spillover: Candidate[];
   unresolved?: Candidate[];
@@ -315,13 +319,15 @@ function buildSummaryBody(args: {
     spillover,
     unresolved = [],
     kind = "code",
+    stillOpen = [],
   } = args;
   const parts: string[] = [marker, brandedHeader(kind)];
   const incompleteReview =
     args.coverageComplete === false || isIncompleteReview(summary);
+  const open = [...approved, ...stillOpen];
   const score = computeMergeabilityScore({
-    approved,
-    totalApproved,
+    approved: open,
+    totalApproved: open.length,
     incompleteReview,
   });
   if (incompleteReview)
@@ -341,8 +347,16 @@ function buildSummaryBody(args: {
   if (kind !== "policy") {
     parts.push(`**Mergeability Score:** ${score}/5`);
     parts.push(
-      buildMergeabilityVerdict(score, totalApproved, incompleteReview),
+      buildMergeabilityVerdict(score, open.length, incompleteReview),
     );
+  }
+
+  if (stillOpen.length > 0) {
+    parts.push("");
+    parts.push(`### Still open from earlier reviews (${stillOpen.length})`);
+    for (const c of stillOpen) {
+      parts.push(formatSummarizedFinding(c, kind));
+    }
   }
 
   if (spillover.length > 0) {
@@ -538,7 +552,7 @@ function maxLine(lines: Set<number>): number {
 
 type Severity = "P0" | "P1" | "P2" | "nit";
 
-function getSeverity(c: Candidate): Severity {
+export function getSeverity(c: Candidate): Severity {
   if (c.severity) return c.severity;
   const match = c.body.match(/^\[(P0|P1|P2|nit)\]/i);
   if (!match) return "P2";

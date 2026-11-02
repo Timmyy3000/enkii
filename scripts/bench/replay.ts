@@ -24,7 +24,7 @@ import {
   type RunReviewResult,
 } from "../../src/tag/commands/review";
 import type { PreparedContext } from "../../src/prompts/types";
-import { claimAnchors, type PostedAnchor } from "../../src/post/dedupe";
+import { recordPosted, withoutPostedDuplicates, type PostedAnchor } from "../../src/post/dedupe";
 
 export type BenchCase = {
   id: string;
@@ -137,7 +137,8 @@ const settled = await Promise.all(
     const laneStart = Date.now();
     try {
       const result = await lanes[kind]();
-      result.validated = claimAnchors(result.validated, kind, postedAnchors);
+      result.validated = withoutPostedDuplicates(result.validated, kind, postedAnchors);
+      recordPosted(result.validated, kind, postedAnchors);
       return {
         kind,
         status: "completed",

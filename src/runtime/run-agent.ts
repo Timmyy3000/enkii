@@ -113,6 +113,8 @@ export function anthropicTuningFromEnv(): AnthropicRequestTuning {
   };
 }
 
+const OAUTH_BETAS = ["claude-code-20250219", "oauth-2025-04-20"];
+
 function anthropicBetas(tuning: AnthropicRequestTuning): string[] {
   return [
     ...(tuning.taskBudgetTokens ? [TASK_BUDGET_BETA] : []),
@@ -128,7 +130,9 @@ function getAnthropicModel(
     getModels("anthropic").find((model) => model.id === modelId) ??
     getModel("anthropic", "claude-opus-4-7");
   const spec = claudeModelSpec(modelId);
-  const betas = anthropicBetas(tuning);
+  const features = anthropicBetas(tuning);
+  const oauth = process.env.ANTHROPIC_API_KEY?.includes("sk-ant-oat");
+  const betas = features.length && oauth ? [...OAUTH_BETAS, ...features] : features;
   // pi-ai predates Claude 5 and sends thinking: {type: "disabled"} for
   // reasoning models, which Claude 5 rejects. reasoning: false omits the
   // thinking param so each model uses its own default.
