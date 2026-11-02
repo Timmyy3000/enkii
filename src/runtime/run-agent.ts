@@ -101,9 +101,12 @@ function positiveIntegerEnv(name: string): number | undefined {
 }
 
 export function anthropicTuningFromEnv(): AnthropicRequestTuning {
+  const taskBudgetTokens = positiveIntegerEnv("ENKII_TASK_BUDGET_TOKENS");
+  if (taskBudgetTokens !== undefined && taskBudgetTokens < 20_000)
+    throw new Error("enkii: task_budget_tokens must be at least 20000.");
   return {
     effort: process.env.ENKII_EFFORT?.trim() || undefined,
-    taskBudgetTokens: positiveIntegerEnv("ENKII_TASK_BUDGET_TOKENS"),
+    taskBudgetTokens,
     clearToolResultsAboveTokens: positiveIntegerEnv(
       "ENKII_CLEAR_TOOL_RESULTS_ABOVE_TOKENS",
     ),
