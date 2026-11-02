@@ -106,6 +106,7 @@ function sanitizeEvent(
     "checkpointHead",
     "eventName",
     "eventAction",
+    "stopReason",
   ]) {
     if (typeof event[key] === "string")
       safe[key] = redact(event[key]).slice(0, MAX_TEXT);
@@ -121,6 +122,7 @@ function sanitizeEvent(
     "toolCallCount",
     "repairCount",
     "timeoutMs",
+    "turn",
   ]) {
     if (typeof event[key] === "number" && Number.isFinite(event[key]))
       safe[key] = event[key];

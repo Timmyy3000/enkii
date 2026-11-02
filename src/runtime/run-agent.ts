@@ -268,6 +268,7 @@ async function runAgentAttempt<T>(
   let toolDurationMs = 0;
   let modelDurationMs = 0;
   let modelStart: number | undefined;
+  let turnCount = 0;
   const toolStarts = new Map<string, number>();
   const pendingSubmissions = new Map<string, unknown>();
   const usage = emptyUsage();
@@ -386,8 +387,19 @@ async function runAgentAttempt<T>(
     }
     if (event.type === "turn_start") modelStart = Date.now();
     if (event.type === "message_end" && event.message.role === "assistant") {
-      if (modelStart !== undefined) modelDurationMs += Date.now() - modelStart;
+      const turnMs =
+        modelStart === undefined ? undefined : Date.now() - modelStart;
+      if (turnMs !== undefined) modelDurationMs += turnMs;
       modelStart = undefined;
+      turnCount++;
+      recordDiagnostic({
+        kind: options.logPrefix,
+        phase: "turn",
+        turn: turnCount,
+        stopReason: event.message.stopReason,
+        durationMs: turnMs,
+        usage: event.message.usage,
+      });
       const messageError =
         "errorMessage" in event.message
           ? event.message.errorMessage
