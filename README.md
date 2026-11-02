@@ -119,7 +119,13 @@ Pass `anthropic_api_key` instead of `openrouter_api_key`. enkii then calls the A
     review_model: claude-opus-5-5
 ```
 
-Set `effort` (`low`, `medium`, `high`, `xhigh`, `max`) to trade review depth against cost. Empty uses the model's default. For example, `review_model: claude-haiku-5-5` with `effort: xhigh` is a low-cost setup.
+Set `effort` (`low`, `medium`, `high`, `xhigh`, `max`) to trade review depth against cost. Empty uses the model's default.
+
+For a low-cost setup, use `review_model: claude-haiku-5-5` with `effort: high` and `task_budget_tokens: 150000`. On a replay of ten real pull request reviews this finished every lane at about $0.21 per pull request. With `effort: xhigh`, Haiku 5.5 kept reasoning until lanes hit the 30-minute timeout.
+
+`task_budget_tokens` gives each lane a token budget the model can see, so it paces its review and submits instead of being cut off. `clear_tool_results_above_tokens` asks the API to clear the oldest tool results once a prompt passes that size. It keeps Haiku 5.5 prompts on the rate card for prompts of 100K tokens or fewer, which is five times cheaper, but in the same replay it also reduced the number of findings. Both are off by default.
+
+enkii sets `max_tokens` to each Claude model's output limit. It is a hard per-response cap the model cannot see, so a lower value only cuts replies off mid-thought. Costs in diagnostics use each model's own prices, chosen per request by prompt size.
 
 Model inputs take Anthropic model ids (`claude-sonnet-5-5`, `claude-haiku-5-5`), not OpenRouter ids. Set only one of the two keys. enkii fails fast when both are present.
 
@@ -175,6 +181,8 @@ uses: Timmyy3000/enkii@v0.2.0-beta.4
 | `run_security` | no | `"true"` | Auto-run security review on PR events |
 | `incremental_review` | no | `"true"` | Reuse completed lane coverage on eligible source-only PR updates; falls back to full review when reuse cannot be verified |
 | `effort` | no | `""` | Anthropic effort for every lane (`low` to `max`); requires `anthropic_api_key` |
+| `task_budget_tokens` | no | `""` | Per-lane token budget the model paces against (Anthropic only, minimum `20000`) |
+| `clear_tool_results_above_tokens` | no | `""` | Prompt size above which the API clears the oldest tool results (Anthropic only) |
 | `agent_timeout_minutes` | no | `"30"` | Total per-pass time budget, including retries and output repair (maximum `120`) |
 | `diagnostics` | no | `"true"` | Write a bounded, sanitized job summary and three-day workflow artifact |
 | `diagnostic_payloads` | no | `"false"` | Include redacted structured submission payloads in diagnostics |
@@ -293,6 +301,17 @@ If you’re asking an AI agent to set up enkii in a repository, give it this che
 - If inline anchors fail, enkii preserves findings in summary notes rather than dropping the entire review.
 - Avoid `pull_request_review: submitted` with `cancel-in-progress: true` in the same workflow, or runs can self-cancel when enkii submits its own review.
 - Review lanes settle independently: successful reviews are posted even if another lane fails during prompt loading, model execution, validation, or GitHub posting. The overall action still reports the failed lane after preserving successful results.
+
+## Benchmarking changes
+
+`scripts/bench/replay.ts` replays one pull request at a fixed commit through the code, security and policy lanes locally, without posting. `scripts/bench/score.ts` compares labeled runs on lanes finished, time, cost per request, prompts above 100K tokens, duplicate findings and recall against known findings.
+
+```bash
+ANTHROPIC_API_KEY=... ENKII_EFFORT=high bun scripts/bench/replay.ts cases.json my-case runs/high/my-case-r1
+ANTHROPIC_API_KEY=... bun scripts/bench/score.ts runs ground-truth.json high
+```
+
+`cases.json` lists `{id, repo, pr, head, base, baseRef, title, body}`. The ground-truth file maps each case id to findings you know are real, as `{path, line, body}`.
 
 ## Troubleshooting
 
