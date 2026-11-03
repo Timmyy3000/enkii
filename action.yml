@@ -57,6 +57,14 @@ inputs:
     description: "Anthropic effort level for every review lane: low, medium, high, xhigh, or max. Empty uses the model's default. Requires anthropic_api_key."
     required: false
     default: ""
+  task_budget_tokens:
+    description: "Optional per-lane token budget the model can see and pace itself against (Anthropic only, minimum 20000). Empty disables it."
+    required: false
+    default: ""
+  clear_tool_results_above_tokens:
+    description: "Optional prompt size, in tokens, above which the Anthropic API clears the oldest tool results. Keeps Haiku 5.5 prompts on its cheaper rate card below 100K tokens. Empty disables it."
+    required: false
+    default: ""
   agent_timeout_minutes:
     description: "Total time budget per review pass, including retries and output repair. Default: 30 minutes; maximum: 120."
     required: false
@@ -143,6 +151,8 @@ runs:
         INCREMENTAL_REVIEW: ${{ inputs.incremental_review }}
         ENKII_AGENT_TIMEOUT_MINUTES: ${{ inputs.agent_timeout_minutes }}
         ENKII_EFFORT: ${{ inputs.effort }}
+        ENKII_TASK_BUDGET_TOKENS: ${{ inputs.task_budget_tokens }}
+        ENKII_CLEAR_TOOL_RESULTS_ABOVE_TOKENS: ${{ inputs.clear_tool_results_above_tokens }}
         ENKII_DIAGNOSTICS: ${{ inputs.diagnostics }}
         ENKII_DIAGNOSTIC_PAYLOADS: ${{ inputs.diagnostic_payloads }}
 

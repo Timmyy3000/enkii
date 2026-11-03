@@ -309,10 +309,6 @@ export function assertPriorFindingsRechecked(
     if (seen.has(d.index))
       issues.push(`prior finding ${d.index} has duplicate dispositions`);
     seen.add(d.index);
-    if (d.commentIndex !== null && !candidates.comments[d.commentIndex])
-      issues.push(
-        `prior finding ${d.index}: commentIndex ${d.commentIndex} references a nonexistent comment. If no findings survive, submit comments: [] with every disposition set to commentIndex: null and the fix explained`,
-      );
     if (!d.reason.trim())
       issues.push(`prior finding ${d.index} needs a concrete reason`);
   }
@@ -321,7 +317,7 @@ export function assertPriorFindingsRechecked(
       issues.push(`prior finding ${index} has no disposition`);
   if (issues.length)
     throw new Error(
-      `enkii: invalid prior-finding dispositions: ${issues.join("; ")}. Return one entry per prior finding with a concrete reason; use commentIndex=null only when resolved or no longer valid.`,
+      `enkii: invalid prior-finding dispositions: ${issues.join("; ")}. Return one entry per prior finding with status still_present or resolved and a concrete reason.`,
     );
 }
 
@@ -340,11 +336,9 @@ export function normalizePriorFindings(
   >();
   for (const d of candidates.priorFindingDispositions ?? []) {
     if (d.index >= count || byIndex.has(d.index)) continue;
-    const dangling =
-      d.commentIndex !== null && !candidates.comments[d.commentIndex];
     byIndex.set(d.index, {
       index: d.index,
-      commentIndex: dangling ? null : d.commentIndex,
+      status: d.status,
       reason: d.reason?.trim() || "not rechecked by the reviewer",
     });
   }
@@ -352,7 +346,7 @@ export function normalizePriorFindings(
     if (!byIndex.has(index))
       byIndex.set(index, {
         index,
-        commentIndex: null,
+        status: "still_present",
         reason: "not rechecked by the reviewer",
       });
   candidates.priorFindingDispositions = [...byIndex.values()].sort(

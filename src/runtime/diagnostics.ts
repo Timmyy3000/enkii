@@ -106,6 +106,7 @@ function sanitizeEvent(
     "checkpointHead",
     "eventName",
     "eventAction",
+    "stopReason",
   ]) {
     if (typeof event[key] === "string")
       safe[key] = redact(event[key]).slice(0, MAX_TEXT);
@@ -121,6 +122,7 @@ function sanitizeEvent(
     "toolCallCount",
     "repairCount",
     "timeoutMs",
+    "turn",
   ]) {
     if (typeof event[key] === "number" && Number.isFinite(event[key]))
       safe[key] = event[key];
@@ -204,10 +206,9 @@ function structuralPayload(value: unknown): unknown {
               : {};
           return {
             index: typeof item.index === "number" ? item.index : undefined,
-            commentIndex:
-              typeof item.commentIndex === "number" ||
-              item.commentIndex === null
-                ? item.commentIndex
+            status:
+              item.status === "still_present" || item.status === "resolved"
+                ? item.status
                 : undefined,
             reasonPresent:
               typeof item.reason === "string" && item.reason.length > 0,

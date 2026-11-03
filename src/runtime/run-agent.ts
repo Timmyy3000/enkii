@@ -11,6 +11,7 @@ import {
   type Usage,
 } from "@mariozechner/pi-ai";
 import { recordDiagnostic } from "./diagnostics";
+import { claudeModelSpec, priceUsage } from "./claude-models";
 
 type AgentLike = {
   subscribe: Agent["subscribe"];
@@ -81,28 +82,133 @@ function getOpenRouterModel(modelId: string): Model<any> {
   };
 }
 
-function getAnthropicModel(modelId: string): Model<any> {
-  const base =
-    getModels("anthropic").find((model) => model.id === modelId) ??
-    getModel("anthropic", "claude-opus-4-7");
+const TASK_BUDGET_BETA = "task-budgets-2026-03-13";
+const CONTEXT_MANAGEMENT_BETA = "context-management-2025-06-27";
+
+export type AnthropicRequestTuning = {
+  effort?: string;
+  taskBudgetTokens?: number;
+  clearToolResultsAboveTokens?: number;
+};
+
+function positiveIntegerEnv(name: string): number | undefined {
+  const raw = process.env[name]?.trim();
+  if (!raw) return undefined;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0)
+    throw new Error(`enkii: ${name} must be a whole number of tokens.`);
+  return value > 0 ? value : undefined;
+}
+
+export function anthropicTuningFromEnv(): AnthropicRequestTuning {
+  const taskBudgetTokens = positiveIntegerEnv("ENKII_TASK_BUDGET_TOKENS");
+  if (taskBudgetTokens !== undefined && taskBudgetTokens < 20_000)
+    throw new Error("enkii: task_budget_tokens must be at least 20000.");
+  return {
+    effort: process.env.ENKII_EFFORT?.trim() || undefined,
+    taskBudgetTokens,
+    clearToolResultsAboveTokens: positiveIntegerEnv(
+      "ENKII_CLEAR_TOOL_RESULTS_ABOVE_TOKENS",
+    ),
+  };
+}
+
+// Every current Claude model accepts at least this many output tokens.
+const UNKNOWN_CLAUDE_MAX_OUTPUT = 64_000;
+
+const OAUTH_BETAS = ["claude-code-20250219", "oauth-2025-04-20"];
+
+function anthropicBetas(tuning: AnthropicRequestTuning): string[] {
+  return [
+    ...(tuning.taskBudgetTokens ? [TASK_BUDGET_BETA] : []),
+    ...(tuning.clearToolResultsAboveTokens ? [CONTEXT_MANAGEMENT_BETA] : []),
+  ];
+}
+
+function getAnthropicModel(
+  modelId: string,
+  tuning: AnthropicRequestTuning,
+): Model<any> {
+  const known = getModels("anthropic").find((model) => model.id === modelId);
+  const base = known ?? getModel("anthropic", "claude-opus-4-7");
+  const spec = claudeModelSpec(modelId);
+  const maxTokens =
+    spec?.maxOutputTokens ?? known?.maxTokens ?? UNKNOWN_CLAUDE_MAX_OUTPUT;
+  if (!spec && !known)
+    console.warn(
+      `enkii: ${modelId} has no known output limit or prices; using ${UNKNOWN_CLAUDE_MAX_OUTPUT} output tokens, and diagnostics costs are estimates.`,
+    );
+  const features = anthropicBetas(tuning);
+  const oauth = process.env.ANTHROPIC_API_KEY?.includes("sk-ant-oat");
+  const betas =
+    features.length && oauth ? [...OAUTH_BETAS, ...features] : features;
   // pi-ai predates Claude 5 and sends thinking: {type: "disabled"} for
   // reasoning models, which Claude 5 rejects. reasoning: false omits the
   // thinking param so each model uses its own default.
-  return { ...base, id: modelId, name: modelId, reasoning: false };
+  return {
+    ...base,
+    id: modelId,
+    name: modelId,
+    reasoning: false,
+    maxTokens,
+    ...(spec ? { contextWindow: spec.contextWindow } : {}),
+    // model.headers replaces pi-ai's own anthropic-beta list.
+    ...(betas.length ? { headers: { "anthropic-beta": betas.join(",") } } : {}),
+  };
 }
 
-export function getAgentModel(modelId: string): Model<any> {
+export function getAgentModel(
+  modelId: string,
+  tuning: AnthropicRequestTuning = anthropicTuningFromEnv(),
+): Model<any> {
   return process.env.ANTHROPIC_API_KEY?.trim()
-    ? getAnthropicModel(modelId)
+    ? getAnthropicModel(modelId, tuning)
     : getOpenRouterModel(modelId);
 }
 
-export function anthropicEffortHook(): AgentOptions["onPayload"] {
-  const effort = process.env.ENKII_EFFORT?.trim();
-  if (!effort || !process.env.ANTHROPIC_API_KEY?.trim()) return undefined;
-  return (payload) => {
-    const params = payload as { output_config?: Record<string, unknown> };
-    return { ...params, output_config: { ...params.output_config, effort } };
+export function anthropicPayloadHook(
+  tuning: AnthropicRequestTuning,
+): AgentOptions["onPayload"] {
+  if (!process.env.ANTHROPIC_API_KEY?.trim()) return undefined;
+  return (payload, model) => {
+    const params = payload as {
+      max_tokens?: number;
+      output_config?: Record<string, unknown>;
+      context_management?: unknown;
+    };
+    const outputConfig = {
+      ...params.output_config,
+      ...(tuning.effort ? { effort: tuning.effort } : {}),
+      ...(tuning.taskBudgetTokens
+        ? { task_budget: { type: "tokens", total: tuning.taskBudgetTokens } }
+        : {}),
+    };
+    return {
+      ...params,
+      // A hard per-response cap the model cannot see. Pacing is task_budget's job.
+      // pi-ai would send a third of it.
+      ...(model?.maxTokens ? { max_tokens: model.maxTokens } : {}),
+      ...(Object.keys(outputConfig).length
+        ? { output_config: outputConfig }
+        : {}),
+      ...(tuning.clearToolResultsAboveTokens
+        ? {
+            context_management: {
+              edits: [
+                {
+                  type: "clear_tool_uses_20250919",
+                  trigger: {
+                    type: "input_tokens",
+                    value: tuning.clearToolResultsAboveTokens,
+                  },
+                  keep: { type: "tool_uses", value: 4 },
+                  clear_at_least: { type: "input_tokens", value: 10_000 },
+                },
+              ],
+            },
+          }
+        : {}),
+    };
   };
 }
 
@@ -170,7 +276,7 @@ function parseEnvMissingOutputRetries(): number {
 
 function isTransientProviderError(errorMessage?: string): boolean {
   if (!errorMessage) return false;
-  return /network connection lost|request was aborted|timed out|timeout|connection reset|econnreset|etimedout|temporarily unavailable/i.test(
+  return /network connection lost|request was aborted|timed out|timeout|connection reset|econnreset|etimedout|temporarily unavailable|overloaded/i.test(
     errorMessage,
   );
 }
@@ -178,9 +284,10 @@ function isTransientProviderError(errorMessage?: string): boolean {
 function buildMissingOutputRetryPrompt(
   outputToolName: string,
   attempt: number,
+  truncated = false,
 ): string {
   return `<retry_notice>
-Previous attempt ${attempt} ended without calling \`${outputToolName}\`.
+Previous attempt ${attempt} ended without calling \`${outputToolName}\`${truncated ? " because the reply reached the output limit. Keep reasoning brief this time" : ""}.
 Use the evidence already gathered in this session; do not restart the review.
 Call \`${outputToolName}\` exactly once now with the final structured output.
 If coverage is incomplete, report it explicitly. Do not answer with prose.
@@ -268,6 +375,12 @@ async function runAgentAttempt<T>(
   let toolDurationMs = 0;
   let modelDurationMs = 0;
   let modelStart: number | undefined;
+  let turnCount = 0;
+  let lastStopReason: string | undefined;
+  const tuning = anthropicTuningFromEnv();
+  const pricing = process.env.ANTHROPIC_API_KEY?.trim()
+    ? claudeModelSpec(options.model)
+    : undefined;
   const toolStarts = new Map<string, number>();
   const pendingSubmissions = new Map<string, unknown>();
   const usage = emptyUsage();
@@ -277,10 +390,10 @@ async function runAgentAttempt<T>(
     options.createAgent ??
     ((args: ConstructorParameters<typeof Agent>[0]) => new Agent(args));
   const agent = createAgent({
-    onPayload: anthropicEffortHook(),
+    onPayload: anthropicPayloadHook(tuning),
     initialState: {
       systemPrompt: options.systemPrompt,
-      model: getAgentModel(options.model),
+      model: getAgentModel(options.model, tuning),
       thinkingLevel: "off",
       tools: options.tools.map((tool) =>
         tool.name !== options.outputToolName
@@ -386,8 +499,22 @@ async function runAgentAttempt<T>(
     }
     if (event.type === "turn_start") modelStart = Date.now();
     if (event.type === "message_end" && event.message.role === "assistant") {
-      if (modelStart !== undefined) modelDurationMs += Date.now() - modelStart;
+      const turnMs =
+        modelStart === undefined ? undefined : Date.now() - modelStart;
+      if (turnMs !== undefined) modelDurationMs += turnMs;
       modelStart = undefined;
+      turnCount++;
+      lastStopReason = event.message.stopReason;
+      if (pricing)
+        event.message.usage.cost = priceUsage(pricing, event.message.usage);
+      recordDiagnostic({
+        kind: options.logPrefix,
+        phase: "turn",
+        turn: turnCount,
+        stopReason: event.message.stopReason,
+        durationMs: turnMs,
+        usage: event.message.usage,
+      });
       const messageError =
         "errorMessage" in event.message
           ? event.message.errorMessage
@@ -420,10 +547,17 @@ async function runAgentAttempt<T>(
         `enkii${prefix}: repairing missing ${options.outputToolName} in the existing session (${repair})`,
       );
       repairCount++;
+      const truncated = lastStopReason === "length";
+      // Thinking fills the same output cap; a second deep pass would hit it again.
+      if (truncated) tuning.effort = "low";
       await agent.prompt(
         submissionError
           ? `Correct the rejected ${options.outputToolName} submission in this session: ${submissionError}. Reuse gathered evidence and resubmit once.`
-          : buildMissingOutputRetryPrompt(options.outputToolName, repair),
+          : buildMissingOutputRetryPrompt(
+              options.outputToolName,
+              repair,
+              truncated,
+            ),
       );
     }
   } catch (error) {

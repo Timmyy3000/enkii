@@ -128,10 +128,9 @@ ${bodyFieldDescription}
 ${sideFieldDescription}
 
 - **priorFindingDispositions**: Only when the host's review scope lists prior findings; otherwise omit it.
-  - One entry per prior index: \`{index, commentIndex, reason}\` with a concrete reason.
-  - \`commentIndex\` is the position of the retained finding in this submission's \`comments\` array.
-  - Use \`commentIndex: null\` ONLY when that prior finding is resolved or no longer valid at current HEAD.
-  - If no finding survives, submit \`comments: []\` with every disposition set to \`null\` — never point \`commentIndex\` at a comment that does not exist.
+  - One entry per prior index: \`{index, status, reason}\` with a concrete reason.
+  - \`status\` is \`"still_present"\` when the risk remains at current HEAD, or \`"resolved"\` when it is fixed or no longer valid.
+  - Never repeat a prior finding in \`comments\`. Its thread is already on the pull request and enkii keeps tracking it. \`comments\` holds new findings only.
 
 - **reviewSummary**:
   - \`body\`: Greptile-style review summary: briefly describe what the PR changes, summarize the important findings by severity, and give clear merge guidance. Do not include a numeric score; enkii computes that mechanically. Keep a clean summary to at most 100 words and three sentences. With findings, target at most 250 words and refer to inline comments instead of repeating their full prose.

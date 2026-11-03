@@ -30,7 +30,10 @@ export const SubmitCandidatesParameters = Type.Object({
     Type.Array(
       Type.Object({
         index: Type.Integer({ minimum: 0 }),
-        commentIndex: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]),
+        status: Type.Union([
+          Type.Literal("still_present"),
+          Type.Literal("resolved"),
+        ]),
         reason: Type.String(),
       }),
     ),

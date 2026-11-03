@@ -85,6 +85,8 @@ export async function postReviewFromValidated(args: {
   marker: string;
   inlineCap: number;
   checkpoint?: ReviewCheckpoint;
+  /** Still-present prior findings: tracked in the checkpoint, not re-posted. */
+  carriedFindings?: Candidate[];
 }): Promise<PostReviewResult> {
   const { validated, octokit, owner, repo, prNumber, marker, inlineCap } = args;
 
@@ -128,7 +130,10 @@ export async function postReviewFromValidated(args: {
       checkpoint.kind !== kind
     )
       return clean;
-    const metadata = encodeCheckpoint({ ...checkpoint, findings: approved });
+    const metadata = encodeCheckpoint({
+      ...checkpoint,
+      findings: [...approved, ...(args.carriedFindings ?? [])],
+    });
     return clean.length + metadata.length <= 60_000 ? clean + metadata : clean;
   };
   const summaryBody = withCheckpoint(
@@ -137,6 +142,7 @@ export async function postReviewFromValidated(args: {
       summary: validated.reviewSummary?.body,
       approved,
       totalApproved: approved.length,
+      stillOpen: args.carriedFindings ?? [],
       inlinePosted: inline.length,
       spillover,
       unresolved,
@@ -191,6 +197,7 @@ export async function postReviewFromValidated(args: {
           summary: validated.reviewSummary?.body,
           approved,
           totalApproved: approved.length,
+          stillOpen: args.carriedFindings ?? [],
           inlinePosted: 0,
           spillover,
           unresolved: [...unresolved, ...inline],
@@ -296,6 +303,8 @@ function buildSummaryBody(args: {
   summary?: string;
   approved: Candidate[];
   totalApproved: number;
+  /** Earlier findings still present at this head, tracked in their existing threads. */
+  stillOpen?: Candidate[];
   inlinePosted: number;
   spillover: Candidate[];
   unresolved?: Candidate[];
@@ -310,13 +319,15 @@ function buildSummaryBody(args: {
     spillover,
     unresolved = [],
     kind = "code",
+    stillOpen = [],
   } = args;
   const parts: string[] = [marker, brandedHeader(kind)];
   const incompleteReview =
     args.coverageComplete === false || isIncompleteReview(summary);
+  const open = [...approved, ...stillOpen];
   const score = computeMergeabilityScore({
-    approved,
-    totalApproved,
+    approved: open,
+    totalApproved: open.length,
     incompleteReview,
   });
   if (incompleteReview)
@@ -325,9 +336,14 @@ function buildSummaryBody(args: {
   if (summary) {
     parts.push("### Summary");
     parts.push(summary.trim());
-  } else if (totalApproved === 0) {
+  } else if (open.length === 0) {
     parts.push("### Summary");
     parts.push("Reviewed this PR and found no issues to flag.");
+  } else if (totalApproved === 0) {
+    parts.push("### Summary");
+    parts.push(
+      `Found no new issues. ${stillOpen.length} earlier findings are still open.`,
+    );
   } else {
     parts.push("### Summary");
     parts.push(`Reviewed this PR and posted ${totalApproved} comments.`);
@@ -335,9 +351,15 @@ function buildSummaryBody(args: {
 
   if (kind !== "policy") {
     parts.push(`**Mergeability Score:** ${score}/5`);
-    parts.push(
-      buildMergeabilityVerdict(score, totalApproved, incompleteReview),
-    );
+    parts.push(buildMergeabilityVerdict(score, open.length, incompleteReview));
+  }
+
+  if (stillOpen.length > 0) {
+    parts.push("");
+    parts.push(`### Still open from earlier reviews (${stillOpen.length})`);
+    for (const c of stillOpen) {
+      parts.push(formatSummarizedFinding(c, kind));
+    }
   }
 
   if (spillover.length > 0) {
@@ -533,7 +555,7 @@ function maxLine(lines: Set<number>): number {
 
 type Severity = "P0" | "P1" | "P2" | "nit";
 
-function getSeverity(c: Candidate): Severity {
+export function getSeverity(c: Candidate): Severity {
   if (c.severity) return c.severity;
   const match = c.body.match(/^\[(P0|P1|P2|nit)\]/i);
   if (!match) return "P2";

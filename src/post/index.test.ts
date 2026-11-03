@@ -51,6 +51,118 @@ function makeValidated(): ValidatedPass {
 }
 
 describe("postReviewFromValidated", () => {
+  test("still-present prior findings stay in the checkpoint without being posted again", async () => {
+    const checkpoint: ReviewCheckpoint = {
+      version: 1,
+      repository: "Docsyde/docsyde-backend",
+      prNumber: 294,
+      kind: "code",
+      base: "b".repeat(40),
+      head: "a".repeat(40),
+      config: "config",
+      findings: [],
+    };
+    const carried = {
+      path: "src/token.ts",
+      line: 7,
+      side: "RIGHT" as const,
+      body: "[P2] Accepted residual risk",
+    };
+    const calls: any[] = [];
+    const octokit = {
+      paginate: async () => [
+        {
+          filename: "src/service.ts",
+          patch: "@@ -10,2 +10,3 @@\n context\n+added\n context",
+        },
+      ],
+      rest: {
+        pulls: {
+          listFiles() {},
+          createReview: async (args: any) => {
+            calls.push(args);
+            return { data: { id: 1 } };
+          },
+        },
+      },
+    } as unknown as Octokit;
+    const validated = makeValidated();
+    validated.meta.headSha = checkpoint.head;
+    validated.results = validated.results.slice(0, 1);
+    await postReviewFromValidated({
+      validated,
+      octokit,
+      owner: "Docsyde",
+      repo: "docsyde-backend",
+      prNumber: 294,
+      marker: ENKII_REVIEW_MARKER,
+      inlineCap: 20,
+      checkpoint,
+      carriedFindings: [carried],
+    });
+    const review = calls.at(-1);
+    expect(review.comments.map((c: any) => c.path)).toEqual(["src/service.ts"]);
+    const decoded = findCheckpoint(
+      [
+        {
+          body: review.body,
+          commit_id: checkpoint.head,
+          state: "COMMENTED",
+          user: { login: "github-actions[bot]", type: "Bot" },
+        },
+      ],
+      checkpoint,
+    );
+    expect(decoded?.findings.map((f) => f.body)).toEqual([
+      "[P1] Valid anchor\n\nThis can be posted inline.",
+      "[P2] Accepted residual risk",
+    ]);
+  });
+
+  test("a still-open P0 from an earlier review keeps the verdict at not mergeable", async () => {
+    const calls: any[] = [];
+    const octokit = {
+      paginate: async () => [],
+      rest: {
+        pulls: {
+          listFiles() {},
+          createReview: async (args: any) => {
+            calls.push(args);
+            return { data: { id: 1 } };
+          },
+        },
+      },
+    } as unknown as Octokit;
+    const validated = makeValidated();
+    validated.results = [];
+    validated.reviewSummary = undefined;
+    await postReviewFromValidated({
+      validated,
+      octokit,
+      owner: "o",
+      repo: "r",
+      prNumber: 294,
+      marker: ENKII_REVIEW_MARKER,
+      inlineCap: 20,
+      carriedFindings: [
+        {
+          path: "src/a.ts",
+          line: 3,
+          side: "RIGHT",
+          body: "[P0] Token leaks to logs",
+        },
+      ],
+    });
+    const body: string = calls.at(-1).body;
+    expect(body).toContain("**Mergeability Score:** 1/5");
+    expect(body).not.toContain("Safe to merge");
+    expect(body).toContain("Still open from earlier reviews (1)");
+    expect(body).toContain(
+      "Found no new issues. 1 earlier findings are still open.",
+    );
+    expect(body).not.toContain("found no issues to flag");
+  });
+
   test("checkpoint survives summary fallback with all findings, but never incomplete coverage", async () => {
     const checkpoint: ReviewCheckpoint = {
       version: 1,

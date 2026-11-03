@@ -87,8 +87,8 @@ test("preserves prior finding indices and null references without retaining sour
     payload: {
       comments: [{ body: "private source", path: "private.ts" }],
       priorFindingDispositions: [
-        { index: 0, commentIndex: null, reason: "private source" },
-        { index: 1, commentIndex: 7, reason: "" },
+        { index: 0, status: "resolved", reason: "private source" },
+        { index: 1, status: "still_present", reason: "" },
       ],
       "private source": 123,
     },
@@ -98,8 +98,8 @@ test("preserves prior finding indices and null references without retaining sour
   const payload = JSON.parse(text).events[0].submission;
   expect(payload.commentCount).toBe(1);
   expect(payload.priorFindingDispositions).toEqual([
-    { index: 0, commentIndex: null, reasonPresent: true },
-    { index: 1, commentIndex: 7, reasonPresent: false },
+    { index: 0, status: "resolved", reasonPresent: true },
+    { index: 1, status: "still_present", reasonPresent: false },
   ]);
   expect(text).not.toContain("private");
 });

@@ -31,7 +31,7 @@ export const CandidatesPassSchema = z.object({
     .array(
       z.object({
         index: z.number().int().nonnegative(),
-        commentIndex: z.number().int().nonnegative().nullable(),
+        status: z.enum(["still_present", "resolved"]),
         reason: z.string(),
       }),
     )
